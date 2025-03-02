@@ -12,48 +12,158 @@ const HUGGING_FACE_API_URL = 'https://api-inference.huggingface.co/models/';
 const HUGGING_FACE_API_KEY = import.meta.env.VITE_HUGGING_FACE_API_KEY || '';
 
 /**
+ * Get a Hugging Face model interface
+ * @param {string} modelId - The Hugging Face model ID
+ * @returns {Promise<Object>} - A model interface object
+ */
+export const getHuggingFaceModel = async (modelId) => {
+  try {
+    if (!HUGGING_FACE_API_KEY) {
+      throw new Error('Hugging Face API key not found. Please add it to your .env file as VITE_HUGGING_FACE_API_KEY.');
+    }
+    
+    // Attempt an initial query to verify the model works
+    await queryModel(modelId, 'Hello, world!');
+    
+    return {
+      modelId,
+      
+      /**
+       * Query the model
+       * @param {string} input - The input text to query with
+       * @returns {Promise<Object|string>} - The model's response
+       */
+      query: async (input) => {
+        return await queryModel(modelId, input);
+      },
+      
+      /**
+       * Get model information
+       * @returns {Promise<Object>} - Model information
+       */
+      getInfo: async () => {
+        return {
+          id: modelId,
+          name: modelId.includes('/') ? modelId.split('/')[1] : modelId,
+          provider: 'huggingface',
+        };
+      }
+    };
+  } catch (error) {
+    console.error(`Error initializing Hugging Face model ${modelId}:`, error);
+    throw new Error(`Failed to initialize model ${modelId}: ${error.message}`);
+  }
+};
+
+/**
+ * Query a Hugging Face model
+ * @param {string} modelId - The Hugging Face model ID
+ * @param {string} input - The input text
+ * @returns {Promise<Object|string>} - The model's response
+ */
+const queryModel = async (modelId, input) => {
+  try {
+    const response = await fetch(`${HUGGING_FACE_API_URL}${modelId}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${HUGGING_FACE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ inputs: input }),
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`API request failed: ${response.status} ${response.statusText} - ${errorData.error || ''}`);
+    }
+    
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error(`Error querying model ${modelId}:`, error);
+    throw error;
+  }
+};
+
+/**
  * Get a model adapter for a specified Hugging Face model
  * 
  * @param {Object} modelConfig - Configuration for the model
  * @returns {Object} Model adapter for interacting with the model
  */
 export const getHuggingFaceModelAdapter = async (modelConfig) => {
-  // Determine the appropriate model based on the model type
-  const modelId = getModelIdForType(modelConfig.modelType, modelConfig.modelCategory);
+  // Use the user-provided modelId if available, otherwise determine based on model type
+  const modelId = modelConfig.modelId || getModelIdForType(modelConfig.modelType, modelConfig.modelCategory);
   
-  // Create a model adapter that uses the Hugging Face API
-  return {
-    modelType: modelConfig.modelType,
-    modelId,
-    source: 'huggingface',
+  try {
+    // Verify the model exists and is accessible
+    console.log(`Initializing Hugging Face model: ${modelId}`);
     
-    // Method for generating predictions from the model
-    getPrediction: async (input) => {
-      try {
-        // Make a call to the Hugging Face Inference API
-        const response = await fetch(`${HUGGING_FACE_API_URL}${modelId}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${HUGGING_FACE_API_KEY}`
-          },
-          body: JSON.stringify({ inputs: input })
-        });
-        
-        if (!response.ok) {
-          throw new Error(`Error from Hugging Face API: ${response.statusText}`);
-        }
-        
-        const result = await response.json();
-        
-        // Process and standardize the response format based on model type
-        return processHuggingFaceResponse(result, modelConfig.modelType);
-      } catch (error) {
-        console.error('Error calling Hugging Face API:', error);
-        throw error;
-      }
+    // Make a test call to the model with a simple input
+    const testResponse = await fetch(`${HUGGING_FACE_API_URL}${modelId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${HUGGING_FACE_API_KEY}`
+      },
+      body: JSON.stringify({ inputs: "Hello, testing model connectivity" })
+    });
+    
+    if (!testResponse.ok) {
+      const errorData = await testResponse.json().catch(() => ({}));
+      throw new Error(`Failed to initialize model: ${testResponse.status} ${testResponse.statusText} - ${errorData.error || ''}`);
     }
-  };
+    
+    // Create a model adapter that uses the Hugging Face API
+    return {
+      modelType: modelConfig.modelType,
+      modelId,
+      source: 'huggingface',
+      
+      // Method for generating predictions from the model
+      getPrediction: async (input) => {
+        try {
+          // Make a call to the Hugging Face Inference API
+          const response = await fetch(`${HUGGING_FACE_API_URL}${modelId}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${HUGGING_FACE_API_KEY}`
+            },
+            body: JSON.stringify({ inputs: input })
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Error from Hugging Face API: ${response.statusText}`);
+          }
+          
+          const result = await response.json();
+          
+          // Process and standardize the response format based on model type
+          return processHuggingFaceResponse(result, modelConfig.modelType);
+        } catch (error) {
+          console.error('Error calling Hugging Face API:', error);
+          throw error;
+        }
+      },
+
+      /**
+       * Get model information
+       * @returns {Object} - Information about the model
+       */
+      getModelInfo: () => {
+        return {
+          name: modelId,
+          type: modelConfig.modelType || 'huggingface',
+          category: modelConfig.modelCategory || 'text',
+          parameters: modelConfig.parameters || {}
+        };
+      }
+    };
+  } catch (error) {
+    console.error(`Error initializing Hugging Face model ${modelId}:`, error);
+    throw error;
+  }
 };
 
 /**

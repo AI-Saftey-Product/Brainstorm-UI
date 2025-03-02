@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -38,9 +38,11 @@ import CategoryChip from '../components/common/CategoryChip.jsx';
 import ComplianceScoreGauge from '../components/common/ComplianceScoreGauge';
 import ProgressBar from '../components/common/ProgressBar';
 import { runTests } from '../services/testsService';
+import { createModelAdapter } from '../services/modelAdapter';
 
 const RunTestsPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { 
     selectedTests, 
     testParameters, 
@@ -61,19 +63,28 @@ const RunTestsPage = () => {
   const [expandedRows, setExpandedRows] = useState({});
   const [verbose, setVerbose] = useState(false);
   const [logs, setLogs] = useState([]);
+  const [modelAdapterState, setModelAdapter] = useState(null);
+  const [modelConfig, setModelConfig] = useState(null);
+  const [error, setError] = useState(null);
   
   const logContainerRef = useRef(null);
   
   // Group tests by category
   const groupTestsByCategory = () => {
+    const testsToUse = location.state?.selectedTests || selectedTests || [];
     const grouped = {};
     
     // Using data from MOCK_TESTS to get more info about the tests
     Object.entries(TEST_CATEGORIES).forEach(([category]) => {
-      const testsInCategory = selectedTests.filter(testId => {
-        const allTests = Object.values(MOCK_TESTS).flat();
-        const test = allTests.find(t => t.id === testId);
-        return test && test.category === category;
+      const testsInCategory = testsToUse.filter(testId => {
+        // Look through all mockTest categories to find matching tests by ID
+        for (const [cat, tests] of Object.entries(MOCK_TESTS)) {
+          const found = tests.find(t => t.id === testId);
+          if (found && found.category === category) {
+            return true;
+          }
+        }
+        return false;
       });
       
       if (testsInCategory.length > 0) {
@@ -96,64 +107,130 @@ const RunTestsPage = () => {
     setLogs(prev => [...prev, `[${timestamp}] ${message}`]);
   };
   
+  useEffect(() => {
+    // Debug what's happening with navigation
+    console.log('RunTests: location.state:', location.state);
+    console.log('RunTests: selectedTests from context:', selectedTests);
+    console.log('RunTests: modelAdapter from context:', modelAdapter);
+    
+    // Get selected tests and model config from location state or use context values as fallback
+    if (location.state?.selectedTests && location.state?.modelConfig) {
+      // Use data from navigation state
+      console.log('RunTests: Using tests from location.state');
+      
+      // Create local state variables for tests and config
+      const testsFromLocation = location.state.selectedTests;
+      setTestResults({});
+      
+      setModelConfig(location.state.modelConfig);
+      
+      // Initialize model adapter when component mounts
+      const initModelAdapter = async () => {
+        try {
+          const adapter = await createModelAdapter(location.state.modelConfig);
+          setModelAdapter(adapter);
+          addLog(`Model adapter created for ${adapter.source === 'huggingface' ? 'Hugging Face model' : 'mock model'}`);
+          if (adapter.source === 'huggingface') {
+            addLog(`Using model: ${adapter.modelId}`);
+          }
+        } catch (error) {
+          console.error('Error initializing model adapter:', error);
+          addLog(`Error initializing model: ${error.message}`);
+          setError(`Failed to initialize model: ${error.message}`);
+        }
+      };
+      
+      initModelAdapter();
+    } else if (selectedTests && selectedTests.length > 0 && modelAdapter) {
+      // Fallback to using context values if they exist
+      console.log('RunTests: Using tests and model from context');
+      addLog('Using configured model from context');
+      setModelAdapter(modelAdapter);
+      setError(null);
+    } else {
+      // If no data available, navigate back to test config
+      console.log('RunTests: No test data available, redirecting');
+      navigate('/test-config', { replace: true });
+    }
+  }, [location.state, navigate, selectedTests, modelAdapter]);
+  
   const handleRunTests = async () => {
-    if (!selectedTests.length) {
+    if (!selectedTests || selectedTests.length === 0) {
+      setError('No tests selected');
       return;
     }
     
-    setRunningTests(true);
-    setTestProgress(0);
-    setCurrentTestName('');
-    setTestResults({});
-    setComplianceScores({});
-    setTotalPassed(0);
-    setTotalFailed(0);
-    setTestComplete(false);
-    setLogs([]);
+    // Use the local state adapter (modelAdapterState) not the context adapter (modelAdapter)
+    const adapter = modelAdapterState || modelAdapter;
     
-    // Reset expanded rows
-    setExpandedRows({});
+    if (!adapter) {
+      setError('Model not initialized');
+      return;
+    }
     
     try {
-      addLog(`Starting test run for ${selectedTests.length} tests...`);
+      setRunningTests(true);
+      setError(null);
+      setTestResults({});
+      setComplianceScores({});
+      setTestProgress(0);
+      setCurrentTestName('Initializing...');
+      addLog('Starting test run...');
       
-      // Use the service to run tests
+      // Group tests by category for better organization
+      const groupedTests = groupTestsByCategory(selectedTests);
+      for (const category in groupedTests) {
+        addLog(`Preparing ${groupedTests[category]} tests for category: ${category}`);
+      }
+      
+      // Define logCallback for real-time logging
+      const logCallback = (message) => {
+        addLog(message);
+      };
+      
+      // Log model information with fallback if getModelInfo is not available
+      if (typeof adapter.getModelInfo === 'function') {
+        const modelInfo = adapter.getModelInfo();
+        addLog(`Using model: ${modelInfo.name} (${modelInfo.type})`);
+      } else {
+        // Fallback when getModelInfo is not available
+        addLog(`Using ${adapter.source || 'unknown'} model`);
+      }
+      
+      // Run the tests with the model adapter
       const { results, complianceScores: scores } = await runTests(
-        selectedTests, 
-        modelAdapter, 
-        testParameters
+        selectedTests.map(testId => testId),
+        adapter,
+        {}, // Test parameters (empty for now)
+        verbose ? logCallback : null
       );
       
-      // Save results to state
+      // Update states with results
       setTestResults(results);
       setComplianceScores(scores);
+      addLog('All tests completed successfully');
       
-      // Calculate statistics
-      const passed = Object.values(results).filter(item => item.result.pass).length;
-      const failed = selectedTests.length - passed;
+      // Calculate overall results
+      const totalTests = Object.values(scores).reduce((sum, score) => sum + score.total, 0);
+      const passedTests = Object.values(scores).reduce((sum, score) => sum + score.passed, 0);
+      setTotalPassed(passedTests);
+      setTotalFailed(totalTests - passedTests);
+      const overallScoreValue = totalTests > 0 ? (passedTests / totalTests) * 100 : 0;
+      setOverallScore(overallScoreValue);
+      addLog(`Overall results: ${passedTests}/${totalTests} tests passed (${overallScoreValue.toFixed(1)}%)`);
       
-      setTotalPassed(passed);
-      setTotalFailed(failed);
-      
-      // Calculate overall score
-      const totalScore = Object.values(scores).reduce((sum, category) => sum + category.passed, 0);
-      const totalTests = Object.values(scores).reduce((sum, category) => sum + category.total, 0);
-      const overall = totalTests > 0 ? (totalScore / totalTests) * 100 : 0;
-      
-      setOverallScore(overall);
+      // Set progress to 100% when done
+      setTestProgress(100);
+      setCurrentTestName('Completed');
+      setTestComplete(true);
       
       // Save results to context
       saveTestResults(results, scores);
-      
-      setCurrentTestName('');
-      setRunningTests(false);
-      setTestComplete(true);
-      setTestProgress(100);
-      
-      addLog(`Test run completed successfully. ${passed} passed, ${failed} failed.`);
     } catch (error) {
       console.error('Error running tests:', error);
-      addLog(`Error running tests: ${error.message}`);
+      setError(`Error running tests: ${error.message}`);
+      addLog(`Error: ${error.message}`);
+    } finally {
       setRunningTests(false);
     }
   };

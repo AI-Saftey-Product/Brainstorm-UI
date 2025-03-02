@@ -46,49 +46,46 @@ const ModelConfigPage = () => {
     setValidationErrors(updatedErrors);
   };
   
-  const validateStep = () => {
+  const validateForm = () => {
     const errors = {};
     
-    switch (activeStep) {
-      case 0: // Model Type validation
-        if (!formValues.modelCategory) {
-          errors.modelCategory = 'Please select a model category';
-        }
-        if (!formValues.modelType) {
-          errors.modelType = 'Please select a model type';
-        }
-        break;
-        
-      case 1: // Model Access validation
-        if (formValues.accessType === 'API Endpoint' && !formValues.apiEndpoint) {
-          errors.apiEndpoint = 'API endpoint is required';
-        } else if (formValues.accessType === 'Local Model' && !formValues.modelPath) {
-          errors.modelPath = 'Model path is required';
-        }
-        break;
-        
-      case 2: // Use Case & Risk Profile validation
-        if (!formValues.industry) {
-          errors.industry = 'Please select an industry';
-        }
-        if (!formValues.deploymentEnv) {
-          errors.deploymentEnv = 'Please select a deployment environment';
-        }
-        if (!formValues.userAccess) {
-          errors.userAccess = 'Please select a user access pattern';
-        }
-        break;
-        
-      default:
-        break;
+    // Validate required fields
+    if (!formValues.modelName) {
+      errors.modelName = 'Model name is required';
     }
+    
+    if (!formValues.modelCategory) {
+      errors.modelCategory = 'Model category is required';
+    }
+    
+    if (!formValues.modelType) {
+      errors.modelType = 'Model type is required';
+    }
+    
+    // Validate model ID if using real model
+    if (formValues.useRealModel && !formValues.modelId) {
+      errors.modelId = 'Model ID is required when using a real model';
+    }
+    
+    // Only validate API endpoint if access type is API
+    if (formValues.accessType === 'API Endpoint') {
+      if (!formValues.apiEndpoint) {
+        errors.apiEndpoint = 'API endpoint is required';
+      }
+    } else {
+      if (!formValues.modelPath) {
+        errors.modelPath = 'Model path is required';
+      }
+    }
+    
+    // Other validations...
     
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
   
   const handleNext = () => {
-    if (validateStep()) {
+    if (validateForm()) {
       setActiveStep((prevStep) => prevStep + 1);
     }
   };
@@ -111,7 +108,7 @@ const ModelConfigPage = () => {
           setModelInitStatus('Initializing Hugging Face model...');
           // Load real model from Hugging Face
           modelAdapter = await huggingFaceService.getHuggingFaceModelAdapter(formValues);
-          setModelInitStatus('Hugging Face model initialized successfully!');
+          setModelInitStatus(`Hugging Face model "${formValues.modelId}" initialized successfully!`);
         } catch (error) {
           setConfigError(`Error initializing Hugging Face model: ${error.message || 'Unknown error'}`);
           setLoading(false);
@@ -132,6 +129,14 @@ const ModelConfigPage = () => {
               prediction: [0.7, 0.3],
               confidence: 0.7,
               input_length: input.length
+            };
+          },
+          getModelInfo: () => {
+            return {
+              name: "Mock Model",
+              type: formValues.modelType,
+              category: formValues.modelCategory,
+              parameters: {}
             };
           }
         };
@@ -163,6 +168,14 @@ const ModelConfigPage = () => {
   
   const handleContinue = () => {
     navigate('/test-config');
+  };
+  
+  const handleComplete = () => {
+    if (!validateForm()) {
+      return;
+    }
+    
+    handleSubmit();
   };
   
   const renderStepContent = () => {
@@ -228,7 +241,7 @@ const ModelConfigPage = () => {
                   <Box sx={{ gridColumn: '1 / -1' }}>
                     <Typography variant="body2" color="textSecondary">Using Real Model:</Typography>
                     <Typography variant="body1">
-                      {formValues.useRealModel ? 'Yes (Hugging Face model)' : 'No (Mock model)'}
+                      {formValues.useRealModel ? `Yes - Hugging Face model: ${formValues.modelId}` : 'No (Mock model)'}
                     </Typography>
                   </Box>
                 </Box>
@@ -331,7 +344,7 @@ const ModelConfigPage = () => {
               <Button
                 variant="contained"
                 color="primary"
-                onClick={handleSubmit}
+                onClick={handleComplete}
                 disabled={loading || configSuccess}
                 startIcon={loading ? <CircularProgress size={20} color="inherit" /> : null}
               >

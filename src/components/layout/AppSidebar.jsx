@@ -40,8 +40,14 @@ const AppSidebar = ({ open, currentPath, modelConfigured }) => {
   ];
 
   const handleNavigation = (path) => {
-    console.log('Navigating to:', path);
-    navigate(path);
+    console.log('Sidebar: Attempting to navigate to:', path);
+    console.log('Sidebar: Current path is:', currentPath);
+    console.log('Sidebar: modelConfigured:', modelConfigured);
+    
+    // Add a small delay to ensure React has time to update state
+    setTimeout(() => {
+      navigate(path);
+    }, 0);
   };
 
   return (
