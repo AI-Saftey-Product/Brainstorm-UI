@@ -19,21 +19,28 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import InfoIcon from '@mui/icons-material/Info';
 import { useNavigate } from 'react-router-dom';
+import { useAppContext } from '../../context/AppContext';
 
 const drawerWidth = 260;
 
 const AppSidebar = ({ open, currentPath, modelConfigured }) => {
   const navigate = useNavigate();
+  const { modelType, modelConfig } = useAppContext();
+  
+  // Debug log - this helps us see what's happening
+  console.log('Sidebar modelConfigured:', modelConfigured);
+  console.log('Sidebar modelConfig:', modelConfig);
   
   const menuItems = [
     { id: '/', text: 'Home', icon: <HomeIcon />, enabled: true },
     { id: '/model-config', text: 'Model Configuration', icon: <SettingsIcon />, enabled: true },
-    { id: '/test-config', text: 'Test Configuration', icon: <CheckBoxIcon />, enabled: !!modelConfigured },
-    { id: '/run-tests', text: 'Run Tests', icon: <PlayArrowIcon />, enabled: !!modelConfigured },
-    { id: '/results', text: 'Results Dashboard', icon: <AssessmentIcon />, enabled: !!modelConfigured }
+    { id: '/test-config', text: 'Test Configuration', icon: <CheckBoxIcon />, enabled: modelConfigured },
+    { id: '/run-tests', text: 'Run Tests', icon: <PlayArrowIcon />, enabled: modelConfigured },
+    { id: '/results', text: 'Results Dashboard', icon: <AssessmentIcon />, enabled: modelConfigured }
   ];
 
   const handleNavigation = (path) => {
+    console.log('Navigating to:', path);
     navigate(path);
   };
 
@@ -100,7 +107,7 @@ const AppSidebar = ({ open, currentPath, modelConfigured }) => {
                 </Typography>
                 <Chip 
                   size="small" 
-                  label={modelConfigured.type || 'AI Model'} 
+                  label={modelType || 'AI Model'} 
                   color="primary" 
                   variant="outlined" 
                 />

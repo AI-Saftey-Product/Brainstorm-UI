@@ -16,6 +16,7 @@ import {
 } from '@mui/material';
 import ModelConfigForm from '../components/widgets/ModelConfigForm';
 import { useAppContext } from '../context/AppContext';
+import huggingFaceService from '../services/huggingFaceService';
 
 const STEPS = ['Model Type', 'Model Access', 'Use Case & Risk Profile', 'Configuration Summary'];
 
@@ -30,6 +31,7 @@ const ModelConfigPage = () => {
   const [configSuccess, setConfigSuccess] = useState(false);
   const [configError, setConfigError] = useState('');
   const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [modelInitStatus, setModelInitStatus] = useState('');
   
   const handleFormChange = (values) => {
     setFormValues(values);
@@ -98,27 +100,48 @@ const ModelConfigPage = () => {
   const handleSubmit = async () => {
     setLoading(true);
     setConfigError('');
+    setModelInitStatus('');
     
     try {
-      // Simulate model initialization delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      let modelAdapter;
       
-      // Mock model adapter for demonstration
-      const mockModelAdapter = {
-        modelType: formValues.modelType,
-        getPrediction: (input) => {
-          return {
-            prediction: [0.7, 0.3],
-            confidence: 0.7,
-            input_length: input.length
-          };
+      // Check if real model option is selected
+      if (formValues.useRealModel) {
+        try {
+          setModelInitStatus('Initializing Hugging Face model...');
+          // Load real model from Hugging Face
+          modelAdapter = await huggingFaceService.getHuggingFaceModelAdapter(formValues);
+          setModelInitStatus('Hugging Face model initialized successfully!');
+        } catch (error) {
+          setConfigError(`Error initializing Hugging Face model: ${error.message || 'Unknown error'}`);
+          setLoading(false);
+          return;
         }
-      };
+      } else {
+        // Use mock model adapter
+        setModelInitStatus('Initializing mock model adapter...');
+        // Simulate model initialization delay
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Create mock model adapter
+        modelAdapter = {
+          modelType: formValues.modelType,
+          source: 'mock',
+          getPrediction: (input) => {
+            return {
+              prediction: [0.7, 0.3],
+              confidence: 0.7,
+              input_length: input.length
+            };
+          }
+        };
+        setModelInitStatus('Mock model adapter initialized successfully!');
+      }
       
       // Gather configuration
       const modelConfig = {
         ...formValues,
-        modelAdapter: mockModelAdapter,
+        modelAdapter,
         type: formValues.modelType // For sidebar display
       };
       
@@ -201,6 +224,13 @@ const ModelConfigPage = () => {
                       </Typography>
                     </Box>
                   )}
+                  
+                  <Box sx={{ gridColumn: '1 / -1' }}>
+                    <Typography variant="body2" color="textSecondary">Using Real Model:</Typography>
+                    <Typography variant="body1">
+                      {formValues.useRealModel ? 'Yes (Hugging Face model)' : 'No (Mock model)'}
+                    </Typography>
+                  </Box>
                 </Box>
               </Box>
               
@@ -242,6 +272,12 @@ const ModelConfigPage = () => {
                   </Box>
                 </Box>
               </Box>
+              
+              {modelInitStatus && (
+                <Alert severity="info" sx={{ mt: 3 }}>
+                  {modelInitStatus}
+                </Alert>
+              )}
               
               {configError && (
                 <Alert severity="error" sx={{ mt: 3 }}>

@@ -1,44 +1,104 @@
-import axios from 'axios';
+// API service using native fetch instead of axios
 
 // Use environment variable for API URL
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
-const api = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
+/**
+ * Custom fetch wrapper with interceptors
+ */
+const api = {
+  async request(url, options = {}) {
+    // Set default headers
+    const headers = {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    };
 
-// Request interceptor for auth
-api.interceptors.request.use(
-  (config) => {
+    // Add auth token if available
     const token = localStorage.getItem('token');
     if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+      headers.Authorization = `Bearer ${token}`;
     }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
 
-// Response interceptor for error handling
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    const customError = {
-      status: error.response?.status || 500,
-      message: error.response?.data?.message || 'Something went wrong',
-      data: error.response?.data || {},
+    // Prepare the request options
+    const fetchOptions = {
+      ...options,
+      headers,
     };
-    
-    // Log errors in development
-    if (import.meta.env.DEV) {
-      console.error('API Error:', customError);
+
+    try {
+      const response = await fetch(`${API_URL}${url}`, fetchOptions);
+      
+      // Handle response
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const customError = {
+          status: response.status,
+          message: errorData.message || 'Something went wrong',
+          data: errorData,
+        };
+        
+        // Log errors in development
+        if (import.meta.env.DEV) {
+          console.error('API Error:', customError);
+        }
+        
+        throw customError;
+      }
+      
+      // Check if response is empty
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        return response.json();
+      }
+      
+      return response.text();
+    } catch (error) {
+      // Log errors in development
+      if (import.meta.env.DEV && !error.status) {
+        console.error('API Error:', error);
+      }
+      
+      throw error;
     }
-    
-    return Promise.reject(customError);
-  }
-);
+  },
+
+  // GET request
+  get(url, options = {}) {
+    return this.request(url, { ...options, method: 'GET' });
+  },
+
+  // POST request
+  post(url, data, options = {}) {
+    return this.request(url, {
+      ...options,
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // PUT request
+  put(url, data, options = {}) {
+    return this.request(url, {
+      ...options,
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // PATCH request
+  patch(url, data, options = {}) {
+    return this.request(url, {
+      ...options,
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // DELETE request
+  delete(url, options = {}) {
+    return this.request(url, { ...options, method: 'DELETE' });
+  },
+};
 
 export default api;

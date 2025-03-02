@@ -7,7 +7,8 @@ export const useAppContext = () => useContext(AppContext);
 
 export const AppProvider = ({ children }) => {
   // Model configuration state
-  const [modelConfigured, setModelConfigured] = useState(null);
+  const [modelConfigured, setModelConfigured] = useState(false);
+  const [modelConfig, setModelConfig] = useState(null);
   const [modelType, setModelType] = useState('');
   const [modelCategory, setModelCategory] = useState('');
   const [modelAdapter, setModelAdapter] = useState(null);
@@ -24,9 +25,11 @@ export const AppProvider = ({ children }) => {
       const savedModel = localStorage.getItem('modelConfig');
       if (savedModel) {
         const parsedModel = JSON.parse(savedModel);
-        setModelConfigured(parsedModel);
+        setModelConfigured(true);
+        setModelConfig(parsedModel);
         setModelType(parsedModel.modelType || '');
         setModelCategory(parsedModel.modelCategory || '');
+        setModelAdapter(parsedModel.modelAdapter);
       }
 
       const savedTests = localStorage.getItem('selectedTests');
@@ -55,7 +58,8 @@ export const AppProvider = ({ children }) => {
 
   // Configure model
   const configureModel = (config) => {
-    setModelConfigured(config);
+    setModelConfigured(true);
+    setModelConfig(config);
     setModelType(config.modelType || '');
     setModelCategory(config.modelCategory || '');
     setModelAdapter(config.modelAdapter);
@@ -100,7 +104,8 @@ export const AppProvider = ({ children }) => {
 
   // Reset all data
   const resetAll = () => {
-    setModelConfigured(null);
+    setModelConfigured(false);
+    setModelConfig(null);
     setModelType('');
     setModelCategory('');
     setModelAdapter(null);
@@ -125,6 +130,7 @@ export const AppProvider = ({ children }) => {
       value={{
         // Model state
         modelConfigured,
+        modelConfig,
         modelType,
         modelCategory,
         modelAdapter,

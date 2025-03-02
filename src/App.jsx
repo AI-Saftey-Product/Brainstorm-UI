@@ -1,5 +1,5 @@
-import React, { useState, Suspense, lazy } from 'react';
-import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
+import React, { useState, Suspense, lazy, useEffect } from 'react';
+import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import { useAppContext } from './context/AppContext';
 import AppHeader from './components/layout/AppHeader';
@@ -15,12 +15,12 @@ const ResultsPage = lazy(() => import('./pages/Results'));
 
 function App() {
   const [drawerOpen, setDrawerOpen] = useState(true);
-  const { modelConfigured } = useAppContext();
+  const { modelConfigured, modelConfig } = useAppContext();
   const location = useLocation();
   const navigate = useNavigate();
 
   // Listen for custom navigation events from components
-  React.useEffect(() => {
+  useEffect(() => {
     const handleNavigate = (event) => {
       navigate(`/${event.detail}`);
     };
@@ -32,6 +32,11 @@ function App() {
   const toggleDrawer = () => {
     setDrawerOpen(!drawerOpen);
   };
+  
+  // For debugging
+  console.log('App: Current path:', location.pathname);
+  console.log('App: Model configured:', modelConfigured);
+  console.log('App: Model config:', modelConfig);
   
   return (
     <Box sx={{ display: 'flex', height: '100vh' }}>

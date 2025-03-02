@@ -26,7 +26,16 @@ export default defineConfig({
     }
   },
   optimizeDeps: {
-    include: ['react', 'react-dom', 'react-router-dom', '@mui/material', '@mui/icons-material']
+    include: [
+      'react', 
+      'react-dom', 
+      'react-router-dom', 
+      '@mui/material', 
+      '@mui/icons-material', 
+      '@emotion/react', 
+      '@emotion/styled',
+      'lodash'
+    ]
   },
   server: {
     port: 3000,

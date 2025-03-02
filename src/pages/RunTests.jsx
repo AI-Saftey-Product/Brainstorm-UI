@@ -31,7 +31,7 @@ import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import { useAppContext } from '../context/AppContext';
-import { TEST_CATEGORIES } from '../constants/testCategories';
+import { TEST_CATEGORIES, MOCK_TESTS } from '../constants/testCategories';
 import StatusChip from '../components/common/StatusChip';
 import SeverityChip from '../components/common/SeverityChip';
 import CategoryChip from '../components/common/CategoryChip.jsx';
