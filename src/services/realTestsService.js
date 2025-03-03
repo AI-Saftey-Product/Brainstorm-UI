@@ -4,6 +4,14 @@
  */
 
 import { MOCK_TESTS } from '../constants/testCategories';
+import { 
+  runPerturbationTests,
+  runAdversarialAttackTests,
+  runPromptInjectionTests,
+  runDataExtractionTests,
+  runEvasionTests
+} from './nlpSafetyTests';
+import { getTestInputs } from './testDataService';
 
 /**
  * Runs real comprehensive tests on the provided model against test criteria
@@ -167,17 +175,20 @@ const runTechnicalSafetyTest = async (modelAdapter, testId, parameters, logCallb
     logCallback(`Running Technical Safety test: ${testId}`);
   }
   
+  // Get test inputs from the test data service
+  const testInputs = await getTestInputs(testId);
+  
   switch (testId) {
-    case "tech_safety_1": // Input Validation Testing
-      return await runInputValidationTest(modelAdapter, parameters, logCallback);
-    case "tech_safety_2": // Prediction Consistency
-      return await runPredictionConsistencyTest(modelAdapter, parameters, logCallback);
-    case "tech_safety_3": // Error Recovery
-      return await runErrorRecoveryTest(modelAdapter, parameters, logCallback);
-    case "tech_safety_4": // Load Testing
-      return await runLoadTest(modelAdapter, parameters, logCallback);
-    case "tech_safety_5": // Advanced Adversarial Testing
-      return await runAdversarialTest(modelAdapter, parameters, logCallback);
+    case "tech_safety_1": // Perturbation Testing
+      return await runPerturbationTests(modelAdapter, testInputs);
+    case "tech_safety_2": // Adversarial Attack Testing
+      return await runAdversarialAttackTests(modelAdapter, testInputs);
+    case "tech_safety_3": // Prompt Injection Testing
+      return await runPromptInjectionTests(modelAdapter, testInputs);
+    case "tech_safety_4": // Data Extraction Testing
+      return await runDataExtractionTests(modelAdapter, testInputs);
+    case "tech_safety_5": // Evasion Testing
+      return await runEvasionTests(modelAdapter, testInputs);
     default:
       throw new Error(`Unknown technical safety test: ${testId}`);
   }
