@@ -20,6 +20,7 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import { useNavigate } from 'react-router-dom';
+import brainstormLogo from '../../assets/brainstorm_logo.png';
 
 const AppHeader = ({ toggleDrawer }) => {
   const [notificationsAnchorEl, setNotificationsAnchorEl] = useState(null);
@@ -72,14 +73,23 @@ const AppHeader = ({ toggleDrawer }) => {
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
+            fontFamily: 'Inter, sans-serif',
+            fontWeight: 700,
+            letterSpacing: '-0.01em'
           }}
           onClick={() => navigate('/')}
         >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: '12px' }}>
-            <rect width="24" height="24" rx="6" fill="#3f51b5" />
-            <path d="M7 12H17M12 7V17" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
-          </svg>
-          AI Safety Testing Platform
+          <img 
+            src={brainstormLogo} 
+            alt="Brainstorm Logo" 
+            style={{ 
+              height: '32px', 
+              width: '32px', 
+              marginRight: '12px',
+              objectFit: 'contain'
+            }} 
+          />
+          BRAINSTORM
         </Typography>
         
         <Box sx={{ display: 'flex' }}>

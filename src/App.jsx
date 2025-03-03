@@ -12,6 +12,7 @@ const ModelConfigPage = lazy(() => import('./pages/ModelConfig'));
 const TestConfigPage = lazy(() => import('./pages/TestConfig'));
 const RunTestsPage = lazy(() => import('./pages/RunTests'));
 const ResultsPage = lazy(() => import('./pages/Results'));
+const ModelOverviewPage = lazy(() => import('./pages/ModelOverview'));
 
 function App() {
   const [drawerOpen, setDrawerOpen] = useState(true);
@@ -70,6 +71,7 @@ function App() {
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/model-config" element={<ModelConfigPage />} />
+            <Route path="/model/:modelId" element={<ModelOverviewPage />} />
             <Route 
               path="/test-config" 
               element={

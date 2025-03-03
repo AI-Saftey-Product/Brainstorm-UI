@@ -56,48 +56,32 @@ export const getHuggingFaceModel = async (modelId) => {
 };
 
 /**
- * Query a Hugging Face model
- * @param {string} modelId - The Hugging Face model ID
- * @param {string} input - The input text
- * @returns {Promise<Object|string>} - The model's response
- */
-const queryModel = async (modelId, input) => {
-  try {
-    const response = await fetch(`${HUGGING_FACE_API_URL}${modelId}`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${HUGGING_FACE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ inputs: input }),
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(`API request failed: ${response.status} ${response.statusText} - ${errorData.error || ''}`);
-    }
-    
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error(`Error querying model ${modelId}:`, error);
-    throw error;
-  }
-};
-
-/**
  * Get a model adapter for a specified Hugging Face model
  * 
  * @param {Object} modelConfig - Configuration for the model
+ * @param {Object} options - Additional options
+ * @param {boolean} options.verbose - Enable verbose logging
  * @returns {Object} Model adapter for interacting with the model
  */
-export const getHuggingFaceModelAdapter = async (modelConfig) => {
-  // Use the user-provided modelId if available, otherwise determine based on model type
-  const modelId = modelConfig.modelId || getModelIdForType(modelConfig.modelType, modelConfig.modelCategory);
+export const getHuggingFaceModelAdapter = async (modelConfig, options = {}) => {
+  const verbose = options.verbose || false;
+  
+  if (!modelConfig.modelId) {
+    throw new Error('Model ID is required in the configuration');
+  }
+  
+  const modelId = modelConfig.modelId;
+  
+  if (verbose) {
+    console.log('=== Hugging Face Model Initialization ===');
+    console.log(`Model ID: ${modelId}`);
+    console.log(`Model Type: ${modelConfig.modelType}`);
+    console.log(`Model Category: ${modelConfig.modelCategory}`);
+    console.log('Starting initialization process...');
+  }
   
   try {
-    // Verify the model exists and is accessible
-    console.log(`Initializing Hugging Face model: ${modelId}`);
+    if (verbose) console.log('Verifying model accessibility...');
     
     // Make a test call to the model with a simple input
     const testResponse = await fetch(`${HUGGING_FACE_API_URL}${modelId}`, {
@@ -111,45 +95,47 @@ export const getHuggingFaceModelAdapter = async (modelConfig) => {
     
     if (!testResponse.ok) {
       const errorData = await testResponse.json().catch(() => ({}));
+      if (verbose) console.error('Model initialization failed:', errorData);
       throw new Error(`Failed to initialize model: ${testResponse.status} ${testResponse.statusText} - ${errorData.error || ''}`);
     }
+    
+    if (verbose) console.log('Model successfully verified. Creating model adapter...');
     
     // Create a model adapter that uses the Hugging Face API
     const modelAdapter = {
       modelType: modelConfig.modelType,
       modelId,
       source: 'huggingface',
+      verbose,
       
       // Method for generating predictions from the model
       getPrediction: async (input) => {
         try {
-          // Make a call to the Hugging Face Inference API
-          const response = await fetch(`${HUGGING_FACE_API_URL}${modelId}`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${HUGGING_FACE_API_KEY}`
-            },
-            body: JSON.stringify({ inputs: input })
-          });
-          
-          if (!response.ok) {
-            throw new Error(`Error from Hugging Face API: ${response.statusText}`);
+          if (verbose) {
+            console.log('=== Making Prediction Request ===');
+            console.log(`Input: ${input}`);
           }
           
-          const result = await response.json();
+          const result = await queryModel(modelId, input, { verbose });
+          
+          if (verbose) console.log('Processing prediction response...');
           
           // Process and standardize the response format
           const processedResult = processHuggingFaceResponse(result, modelConfig.modelType);
           
+          if (verbose) {
+            console.log('Processed prediction result:');
+            console.log(JSON.stringify(processedResult, null, 2));
+          }
+          
           // Ensure the response has both prediction and text fields
           return {
             ...processedResult,
-            text: processedResult.prediction, // Ensure text field is always present
+            text: processedResult.prediction,
             raw: result
           };
         } catch (error) {
-          console.error('Error calling Hugging Face API:', error);
+          if (verbose) console.error('Error in getPrediction:', error);
           throw error;
         }
       },
@@ -159,26 +145,115 @@ export const getHuggingFaceModelAdapter = async (modelConfig) => {
        * @returns {Object} - Information about the model
        */
       getModelInfo: () => {
-        return {
+        const info = {
           name: modelId,
           type: modelConfig.modelType || 'huggingface',
           category: modelConfig.modelCategory || 'text',
           parameters: modelConfig.parameters || {}
         };
+        if (verbose) {
+          console.log('Model Information:');
+          console.log(JSON.stringify(info, null, 2));
+        }
+        return info;
       }
     };
 
     // Test the getPrediction method to ensure it's working
+    if (verbose) console.log('Testing model prediction...');
     try {
       await modelAdapter.getPrediction("Test input");
+      if (verbose) console.log('Model prediction test successful');
     } catch (error) {
-      console.error("Error testing model adapter:", error);
+      if (verbose) console.error('Model prediction test failed:', error);
       throw new Error(`Model adapter initialization failed: ${error.message}`);
     }
 
+    if (verbose) console.log('=== Model Initialization Complete ===');
     return modelAdapter;
   } catch (error) {
-    console.error(`Error initializing Hugging Face model ${modelId}:`, error);
+    if (verbose) {
+      console.error('=== Model Initialization Failed ===');
+      console.error('Error details:', error);
+    }
+    throw error;
+  }
+};
+
+/**
+ * Query a Hugging Face model
+ * @param {string} modelId - The Hugging Face model ID
+ * @param {string} input - The input text
+ * @param {Object} options - Additional options
+ * @param {boolean} options.verbose - Enable verbose logging
+ * @returns {Promise<Object|string>} - The model's response
+ */
+const queryModel = async (modelId, input, options = {}) => {
+  const verbose = options.verbose || false;
+  
+  try {
+    const maxRetries = 3;
+    let lastError = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      if (verbose) {
+        console.log(`\nAttempt ${attempt} of ${maxRetries}`);
+        console.log(`Querying model: ${modelId}`);
+      }
+      
+      try {
+        if (verbose) console.log('Sending request to Hugging Face API...');
+        
+        const response = await fetch(`${HUGGING_FACE_API_URL}${modelId}`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${HUGGING_FACE_API_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ 
+            inputs: input,
+            options: { wait_for_model: true }
+          }),
+          mode: 'cors',
+          credentials: 'omit'
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          if (verbose) console.error('Request failed:', errorText);
+          throw new Error(`API request failed: ${response.status} ${response.statusText} - ${errorText}`);
+        }
+        
+        if (verbose) console.log('Successfully received response from API');
+        
+        const data = await response.json();
+        
+        if (verbose) {
+          console.log('Response data:');
+          console.log(JSON.stringify(data, null, 2));
+        }
+        
+        return data;
+      } catch (error) {
+        if (verbose) {
+          console.warn(`Attempt ${attempt} failed:`);
+          console.warn(error.message);
+        }
+        
+        lastError = error;
+        if (attempt < maxRetries) {
+          const waitTime = Math.pow(2, attempt) * 1000;
+          if (verbose) console.log(`Waiting ${waitTime}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          continue;
+        }
+        throw error;
+      }
+    }
+    
+    throw lastError;
+  } catch (error) {
+    if (verbose) console.error('All query attempts failed:', error);
     throw error;
   }
 };
@@ -226,46 +301,6 @@ const processHuggingFaceResponse = (response, modelType) => {
     confidence,
     classification: typeof response === 'object' && response.label ? response.label : undefined
   };
-};
-
-/**
- * Map model type and category to an appropriate Hugging Face model ID
- * 
- * @param {string} modelType - Type of model
- * @param {string} category - Model category
- * @returns {string} Hugging Face model ID
- */
-const getModelIdForType = (modelType, category) => {
-  // Map of model types to recommended Hugging Face models
-  const modelMap = {
-    // NLP Models
-    'Text Classification': 'distilbert-base-uncased-finetuned-sst-2-english',
-    'Token Classification': 'dbmdz/bert-large-cased-finetuned-conll03-english',
-    'Question Answering': 'distilbert-base-cased-distilled-squad',
-    'Zero-Shot Classification': 'facebook/bart-large-mnli',
-    'Translation': 'Helsinki-NLP/opus-mt-en-fr',
-    'Summarization': 'facebook/bart-large-cnn',
-    'Text Generation': 'gpt2',
-    
-    // Vision Models
-    'Image Classification': 'google/vit-base-patch16-224',
-    'Object Detection': 'facebook/detr-resnet-50',
-    'Image Segmentation': 'facebook/detr-resnet-50-panoptic',
-    
-    // Audio Models
-    'Audio Classification': 'superb/hubert-large-superb-er',
-    'Automatic Speech Recognition': 'facebook/wav2vec2-base-960h',
-    
-    // Default models by category
-    'DEFAULT_NLP': 'distilbert-base-uncased',
-    'DEFAULT_Vision': 'google/vit-base-patch16-224',
-    'DEFAULT_Audio': 'facebook/wav2vec2-base-960h',
-    'DEFAULT_Multimodal': 'openai/clip-vit-base-patch32',
-    'DEFAULT_Tabular': 'distilbert-base-uncased' // Fallback for tabular models
-  };
-  
-  // Return the specific model for this type, or the default for the category
-  return modelMap[modelType] || modelMap[`DEFAULT_${category}`] || 'distilbert-base-uncased';
 };
 
 export default {
