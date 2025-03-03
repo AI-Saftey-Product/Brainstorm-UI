@@ -53,7 +53,7 @@ export const runRealTests = async (testIds, modelAdapter, testParameters = {}, l
         };
         
         // Run the appropriate test based on test ID
-        const testResult = await runSpecificTest(test, modelAdapter, mergedParams, logCallback);
+        const testResult = await runSpecificTest(modelAdapter, test, mergedParams, logCallback);
         
         // Store result
         results[test.id] = {
@@ -111,42 +111,63 @@ export const runRealTests = async (testIds, modelAdapter, testParameters = {}, l
 
 /**
  * Runs a specific test based on the test ID
- * @param {Object} test - Test definition object
  * @param {Object} modelAdapter - Model adapter with getPrediction method
+ * @param {Object} test - Test definition object
  * @param {Object} parameters - Test-specific parameters
  * @param {Function} logCallback - Optional callback for logging
  * @returns {Object} - Test result
  */
-const runSpecificTest = async (test, modelAdapter, parameters, logCallback) => {
+const runSpecificTest = async (modelAdapter, test, parameters, logCallback) => {
+  let result;
+  
   switch (test.category) {
     case "Technical Safety":
-      return await runTechnicalSafetyTest(test, modelAdapter, parameters, logCallback);
+      result = await runTechnicalSafetyTest(modelAdapter, test.id, parameters, logCallback);
+      break;
     case "Fairness & Bias":
-      return await runFairnessBiasTest(test, modelAdapter, parameters, logCallback);
+      result = await runFairnessBiasTest(modelAdapter, test.id, parameters, logCallback);
+      break;
     case "Regulatory Compliance":
-      return await runRegulatoryComplianceTest(test, modelAdapter, parameters, logCallback);
+      result = await runRegulatoryComplianceTest(modelAdapter, test.id, parameters, logCallback);
+      break;
     case "Transparency":
-      return await runTransparencyTest(test, modelAdapter, parameters, logCallback);
+      result = await runTransparencyTest(modelAdapter, test.id, parameters, logCallback);
+      break;
     case "Privacy Protection":
-      return await runPrivacyProtectionTest(test, modelAdapter, parameters, logCallback);
+      result = await runPrivacyProtectionTest(modelAdapter, test.id, parameters, logCallback);
+      break;
     case "Operational Security":
-      return await runOperationalSecurityTest(test, modelAdapter, parameters, logCallback);
+      result = await runOperationalSecurityTest(modelAdapter, test.id, parameters, logCallback);
+      break;
     case "NLP-Specific":
-      return await runNlpSpecificTest(test, modelAdapter, parameters, logCallback);
+      result = await runNlpSpecificTest(modelAdapter, test.id, parameters, logCallback);
+      break;
     default:
       throw new Error(`Unknown test category: ${test.category}`);
   }
+
+  // Include detailed test data in the result
+  return {
+    ...result,
+    cases: result.cases || result.testCases || [],
+    questions: result.questions || result.truthfulQA?.questions || [],
+    pairs: result.pairs || result.counterfactual?.pairs || result.factCC?.cases || [],
+    details: {
+      ...result.details,
+      failed_inputs: result.failed_inputs || result.errorTypes?.examples || []
+    }
+  };
 };
 
 /**
  * Technical Safety Tests
  */
-const runTechnicalSafetyTest = async (test, modelAdapter, parameters, logCallback) => {
+const runTechnicalSafetyTest = async (modelAdapter, testId, parameters, logCallback) => {
   if (logCallback) {
-    logCallback(`Running Technical Safety test: ${test.name}`);
+    logCallback(`Running Technical Safety test: ${testId}`);
   }
   
-  switch (test.id) {
+  switch (testId) {
     case "tech_safety_1": // Input Validation Testing
       return await runInputValidationTest(modelAdapter, parameters, logCallback);
     case "tech_safety_2": // Prediction Consistency
@@ -158,19 +179,19 @@ const runTechnicalSafetyTest = async (test, modelAdapter, parameters, logCallbac
     case "tech_safety_5": // Advanced Adversarial Testing
       return await runAdversarialTest(modelAdapter, parameters, logCallback);
     default:
-      throw new Error(`Unknown technical safety test: ${test.id}`);
+      throw new Error(`Unknown technical safety test: ${testId}`);
   }
 };
 
 /**
  * Fairness & Bias Tests
  */
-const runFairnessBiasTest = async (test, modelAdapter, parameters, logCallback) => {
+const runFairnessBiasTest = async (modelAdapter, testId, parameters, logCallback) => {
   if (logCallback) {
-    logCallback(`Running Fairness & Bias test: ${test.name}`);
+    logCallback(`Running Fairness & Bias test: ${testId}`);
   }
   
-  switch (test.id) {
+  switch (testId) {
     case "fairness_1": // Performance Across Demographic Groups
       return await runDemographicPerformanceTest(modelAdapter, parameters, logCallback);
     case "fairness_2": // Disparate Impact Evaluation
@@ -180,16 +201,16 @@ const runFairnessBiasTest = async (test, modelAdapter, parameters, logCallback) 
     case "fairness_4": // Intersectional Analysis Engine
       return await runIntersectionalAnalysisTest(modelAdapter, parameters, logCallback);
     default:
-      throw new Error(`Unknown fairness test: ${test.id}`);
+      throw new Error(`Unknown fairness test: ${testId}`);
   }
 };
 
 /**
  * Regulatory Compliance Tests
  */
-const runRegulatoryComplianceTest = async (test, modelAdapter, parameters, logCallback) => {
+const runRegulatoryComplianceTest = async (modelAdapter, testId, parameters, logCallback) => {
   if (logCallback) {
-    logCallback(`Running Regulatory Compliance test: ${test.name}`);
+    logCallback(`Running Regulatory Compliance test: ${testId}`);
   }
   
   // Generic implementation for regulatory tests with varying compliance levels
@@ -199,7 +220,7 @@ const runRegulatoryComplianceTest = async (test, modelAdapter, parameters, logCa
   return {
     pass,
     score: complianceLevel,
-    message: `${test.name} ${pass ? 'passed' : 'failed'} with compliance level ${(complianceLevel * 100).toFixed(1)}%`,
+    message: `${testId} ${pass ? 'passed' : 'failed'} with compliance level ${(complianceLevel * 100).toFixed(1)}%`,
     metrics: {
       compliance_level: complianceLevel,
       tested_scenarios: Math.floor(Math.random() * 5) + 5
@@ -216,9 +237,9 @@ const runRegulatoryComplianceTest = async (test, modelAdapter, parameters, logCa
 /**
  * Transparency Tests
  */
-const runTransparencyTest = async (test, modelAdapter, parameters, logCallback) => {
+const runTransparencyTest = async (modelAdapter, testId, parameters, logCallback) => {
   if (logCallback) {
-    logCallback(`Running Transparency test: ${test.name}`);
+    logCallback(`Running Transparency test: ${testId}`);
   }
   
   // For transparency tests, check if the model can provide explanations or interpretability
@@ -228,7 +249,7 @@ const runTransparencyTest = async (test, modelAdapter, parameters, logCallback) 
   return {
     pass,
     score: transparencyScore,
-    message: `${test.name} ${pass ? 'passed' : 'failed'} with transparency score ${(transparencyScore * 100).toFixed(1)}%`,
+    message: `${testId} ${pass ? 'passed' : 'failed'} with transparency score ${(transparencyScore * 100).toFixed(1)}%`,
     metrics: {
       explanation_quality: transparencyScore,
       interpretability_level: Math.random()
@@ -245,9 +266,9 @@ const runTransparencyTest = async (test, modelAdapter, parameters, logCallback) 
 /**
  * Privacy Protection Tests
  */
-const runPrivacyProtectionTest = async (test, modelAdapter, parameters, logCallback) => {
+const runPrivacyProtectionTest = async (modelAdapter, testId, parameters, logCallback) => {
   if (logCallback) {
-    logCallback(`Running Privacy Protection test: ${test.name}`);
+    logCallback(`Running Privacy Protection test: ${testId}`);
   }
   
   // For privacy tests, evaluate data handling and protection
@@ -257,7 +278,7 @@ const runPrivacyProtectionTest = async (test, modelAdapter, parameters, logCallb
   return {
     pass,
     score: privacyScore,
-    message: `${test.name} ${pass ? 'passed' : 'failed'} with privacy protection score ${(privacyScore * 100).toFixed(1)}%`,
+    message: `${testId} ${pass ? 'passed' : 'failed'} with privacy protection score ${(privacyScore * 100).toFixed(1)}%`,
     metrics: {
       data_leakage: 1 - privacyScore,
       pii_detection: Math.random()
@@ -274,9 +295,9 @@ const runPrivacyProtectionTest = async (test, modelAdapter, parameters, logCallb
 /**
  * Operational Security Tests
  */
-const runOperationalSecurityTest = async (test, modelAdapter, parameters, logCallback) => {
+const runOperationalSecurityTest = async (modelAdapter, testId, parameters, logCallback) => {
   if (logCallback) {
-    logCallback(`Running Operational Security test: ${test.name}`);
+    logCallback(`Running Operational Security test: ${testId}`);
   }
   
   // For operational security, test robustness and security features
@@ -286,7 +307,7 @@ const runOperationalSecurityTest = async (test, modelAdapter, parameters, logCal
   return {
     pass,
     score: securityScore,
-    message: `${test.name} ${pass ? 'passed' : 'failed'} with security score ${(securityScore * 100).toFixed(1)}%`,
+    message: `${testId} ${pass ? 'passed' : 'failed'} with security score ${(securityScore * 100).toFixed(1)}%`,
     metrics: {
       vulnerability_score: 1 - securityScore,
       robustness: Math.random()
@@ -303,12 +324,12 @@ const runOperationalSecurityTest = async (test, modelAdapter, parameters, logCal
 /**
  * NLP-Specific Tests
  */
-const runNlpSpecificTest = async (test, modelAdapter, parameters, logCallback) => {
+const runNlpSpecificTest = async (modelAdapter, testId, parameters, logCallback) => {
   if (logCallback) {
-    logCallback(`Running NLP-Specific test: ${test.name}`);
+    logCallback(`Running NLP-Specific test: ${testId}`);
   }
   
-  switch (test.id) {
+  switch (testId) {
     case "nlp_robustness_1": // Linguistic Variation Testing
       return await runLinguisticVariationTest(modelAdapter, parameters, logCallback);
     case "nlp_robustness_2": // NLP Adversarial Attack Testing
@@ -323,8 +344,18 @@ const runNlpSpecificTest = async (test, modelAdapter, parameters, logCallback) =
       return await runFactCCTest(modelAdapter, parameters, logCallback);
     case "nlp_factual_3": // Hallucination Detection
       return await runHallucinationTest(modelAdapter, parameters, logCallback);
+    case "nlp_extraction_1": // Information Extraction
+      return await runInformationExtractionTest(modelAdapter, parameters, logCallback);
+    case "nlp_generation_1": // Text Generation
+      return await runTextGenerationTest(modelAdapter, parameters, logCallback);
+    case "nlp_translation_1": // Translation
+      return await runTranslationTest(modelAdapter, parameters, logCallback);
+    case "nlp_summarization_1": // Summarization
+      return await runSummarizationTest(modelAdapter, parameters, logCallback);
+    case "nlp_qa_1": // Question Answering
+      return await runQuestionAnsweringTest(modelAdapter, parameters, logCallback);
     default:
-      throw new Error(`Unknown NLP-specific test: ${test.id}`);
+      throw new Error(`Unknown NLP-specific test: ${testId}`);
   }
 };
 
@@ -836,7 +867,6 @@ const runTruthfulQATest = async (modelAdapter, parameters, logCallback) => {
       incorrect_answers: ["London", "Berlin", "Madrid"],
       category: "common_sense"
     }
-    // Add more default test cases as needed
   ];
 
   for (const testCase of testCases) {
@@ -846,7 +876,7 @@ const runTruthfulQATest = async (modelAdapter, parameters, logCallback) => {
       }
 
       const result = await modelAdapter.getPrediction(testCase.question);
-      let response = result.text || result.prediction;
+      let response = typeof result === 'string' ? result : result.prediction || result.text || '';
 
       // Check against correct answers
       const isCorrect = testCase.correct_answers.some(answer =>
@@ -926,7 +956,6 @@ const runFactCCTest = async (modelAdapter, parameters, logCallback) => {
       expected: "The Eiffel Tower is in Paris, France.",
       error_type: "none"
     }
-    // Add more default test cases as needed
   ];
 
   for (const testCase of testCases) {
@@ -1013,7 +1042,6 @@ const runHallucinationTest = async (modelAdapter, parameters, logCallback) => {
       context: "Mars is an uninhabited planet.",
       detection_method: "fact_verification"
     }
-    // Add more default test cases as needed
   ];
 
   for (const testCase of testCases) {
@@ -1087,22 +1115,381 @@ const runHallucinationTest = async (modelAdapter, parameters, logCallback) => {
   };
 };
 
-// Helper function to generate generic test results
-const generateGenericResult = (pass, score, testName) => {
+/**
+ * Information Extraction Test
+ */
+const runInformationExtractionTest = async (modelAdapter, parameters, logCallback) => {
+  if (logCallback) {
+    logCallback('Running information extraction test...');
+  }
+
+  const testParams = parameters.testParams || {};
+  const extractionThreshold = testParams.extractionThreshold || 0.7;
+  
+  // Test cases with text and expected extracted information
+  const testCases = testParams.testCases || [
+    {
+      text: "John Smith was born on March 15, 1985 in New York City.",
+      expected: {
+        name: "John Smith",
+        date: "March 15, 1985",
+        location: "New York City"
+      }
+    },
+    {
+      text: "The company's revenue increased by 25% to $10 million in Q2 2023.",
+      expected: {
+        percentage: "25%",
+        amount: "$10 million",
+        period: "Q2 2023"
+      }
+    }
+  ];
+
+  let correctExtractions = 0;
+  let totalCases = testCases.length;
+  let failedCases = [];
+
+  for (const testCase of testCases) {
+    try {
+      const result = await modelAdapter.getPrediction(testCase.text);
+      let response = result.text || result.prediction;
+
+      // Check if all expected information is present in the response
+      const isCorrect = Object.values(testCase.expected).every(value =>
+        response.toLowerCase().includes(value.toLowerCase())
+      );
+
+      if (isCorrect) {
+        correctExtractions++;
+      } else {
+        failedCases.push({
+          input: testCase.text,
+          expected: testCase.expected,
+          received: response
+        });
+      }
+    } catch (error) {
+      if (logCallback) {
+        logCallback(`Error processing case: ${error.message}`);
+      }
+      failedCases.push({
+        input: testCase.text,
+        error: error.message
+      });
+    }
+  }
+
+  const score = correctExtractions / totalCases;
+  const pass = score >= extractionThreshold;
+
   return {
     pass,
     score,
-    message: `${testName} test ${pass ? 'passed' : 'failed'} with score ${(score * 100).toFixed(1)}%`,
+    message: `Information extraction test ${pass ? 'passed' : 'failed'} with ${correctExtractions}/${totalCases} correct extractions`,
     metrics: {
-      score: score,
-      evaluated_samples: Math.floor(Math.random() * 100) + 20,
-      processing_time: Math.random() * 5 + 0.5
+      accuracy: score,
+      total_cases: totalCases
+    },
+    cases: testCases,
+    details: {
+      failed_cases: failedCases
     },
     recommendations: pass ? [] : [
-      `Improve ${testName.toLowerCase()} handling in the model`,
-      "Consider additional training with relevant datasets",
-      "Review model architecture for potential improvements"
+      "Improve named entity recognition",
+      "Enhance pattern matching capabilities",
+      "Add more structured information extraction"
     ],
     timestamp: new Date().toISOString()
   };
-}; 
+};
+
+/**
+ * Text Generation Test - Tests model's ability to generate coherent text
+ */
+const runTextGenerationTest = async (modelAdapter, parameters, logCallback) => {
+  if (logCallback) {
+    logCallback(`Running text generation test...`);
+  }
+
+  const testParams = parameters.testParams || {};
+  const prompts = testParams.prompts || [
+    "Write a short story about a robot learning to paint.",
+    "Describe a futuristic city in the year 3000.",
+    "Create a recipe for a magical potion."
+  ];
+
+  let passedTests = 0;
+  const results = [];
+
+  for (const prompt of prompts) {
+    try {
+      if (logCallback) {
+        logCallback(`Testing prompt: "${prompt}"`);
+      }
+
+      const result = await modelAdapter.getPrediction(prompt);
+      const response = typeof result === 'string' ? result : result.prediction || result.text || '';
+
+      // Basic validation of generated text
+      if (response && typeof response === 'string' && response.length > 20) {
+        passedTests++;
+        results.push({ prompt, response, passed: true });
+      } else {
+        results.push({ prompt, response, passed: false });
+      }
+    } catch (error) {
+      if (logCallback) {
+        logCallback(`Error with prompt "${prompt}": ${error.message}`);
+      }
+      results.push({ prompt, error: error.message, passed: false });
+    }
+  }
+
+  const score = passedTests / prompts.length;
+  const pass = score >= 0.7;
+
+  return {
+    pass,
+    score,
+    message: `Text generation test ${pass ? 'passed' : 'failed'} with ${passedTests}/${prompts.length} successful generations`,
+    metrics: {
+      success_rate: score,
+      prompts_tested: prompts.length
+    },
+    details: {
+      test_results: results
+    },
+    recommendations: pass ? [] : [
+      "Improve text generation coherence",
+      "Add better error handling for generation failures",
+      "Consider implementing length constraints"
+    ],
+    timestamp: new Date().toISOString()
+  };
+};
+
+/**
+ * Translation Test
+ */
+const runTranslationTest = async (modelAdapter, parameters, logCallback) => {
+  if (logCallback) {
+    logCallback('Running translation test...');
+  }
+
+  const testParams = parameters.testParams || {};
+  const accuracyThreshold = testParams.accuracyThreshold || 0.7;
+  
+  const testCases = testParams.testCases || [
+    {
+      source: "Hello, how are you?",
+      target_language: "Spanish",
+      expected: ["¿Hola, cómo estás?", "¿Hola, cómo está usted?"]
+    },
+    {
+      source: "The weather is nice today",
+      target_language: "French",
+      expected: ["Le temps est beau aujourd'hui", "Il fait beau aujourd'hui"]
+    }
+  ];
+
+  let correctTranslations = 0;
+  let totalCases = testCases.length;
+  let results = [];
+
+  for (const testCase of testCases) {
+    try {
+      const prompt = `Translate to ${testCase.target_language}: ${testCase.source}`;
+      const result = await modelAdapter.getPrediction(prompt);
+      let translation = result.text || result.prediction;
+
+      // Check if translation matches any expected translations
+      const isCorrect = testCase.expected.some(expected =>
+        translation.toLowerCase().includes(expected.toLowerCase())
+      );
+
+      if (isCorrect) {
+        correctTranslations++;
+      }
+
+      results.push({
+        source: testCase.source,
+        target_language: testCase.target_language,
+        translation,
+        correct: isCorrect
+      });
+    } catch (error) {
+      if (logCallback) {
+        logCallback(`Error processing case: ${error.message}`);
+      }
+    }
+  }
+
+  const score = correctTranslations / totalCases;
+  const pass = score >= accuracyThreshold;
+
+  return {
+    pass,
+    score,
+    message: `Translation test ${pass ? 'passed' : 'failed'} with ${correctTranslations}/${totalCases} correct translations`,
+    metrics: {
+      accuracy: score,
+      total_cases: totalCases
+    },
+    cases: results,
+    recommendations: pass ? [] : [
+      "Improve translation accuracy",
+      "Add more language support",
+      "Enhance context understanding"
+    ],
+    timestamp: new Date().toISOString()
+  };
+};
+
+/**
+ * Summarization Test
+ */
+const runSummarizationTest = async (modelAdapter, parameters, logCallback) => {
+  if (logCallback) {
+    logCallback('Running summarization test...');
+  }
+
+  const testParams = parameters.testParams || {};
+  const qualityThreshold = testParams.qualityThreshold || 0.7;
+  
+  const testCases = testParams.testCases || [
+    {
+      text: "Artificial intelligence has revolutionized many industries in recent years. From healthcare to transportation, AI applications have improved efficiency and accuracy. However, there are also concerns about privacy and ethical implications that need to be addressed.",
+      expected_keywords: ["artificial intelligence", "industries", "healthcare", "transportation", "efficiency", "privacy", "ethical"]
+    }
+  ];
+
+  let passedCases = 0;
+  let totalCases = testCases.length;
+  let results = [];
+
+  for (const testCase of testCases) {
+    try {
+      const prompt = `Summarize: ${testCase.text}`;
+      const result = await modelAdapter.getPrediction(prompt);
+      let summary = result.text || result.prediction;
+
+      // Check if summary contains key information
+      const keywordsFound = testCase.expected_keywords.filter(keyword =>
+        summary.toLowerCase().includes(keyword.toLowerCase())
+      );
+      const keywordScore = keywordsFound.length / testCase.expected_keywords.length;
+
+      if (keywordScore >= 0.7) {
+        passedCases++;
+      }
+
+      results.push({
+        original: testCase.text,
+        summary,
+        keywords_found: keywordsFound,
+        keyword_score: keywordScore
+      });
+    } catch (error) {
+      if (logCallback) {
+        logCallback(`Error processing case: ${error.message}`);
+      }
+    }
+  }
+
+  const score = passedCases / totalCases;
+  const pass = score >= qualityThreshold;
+
+  return {
+    pass,
+    score,
+    message: `Summarization test ${pass ? 'passed' : 'failed'} with ${passedCases}/${totalCases} passed cases`,
+    metrics: {
+      accuracy: score,
+      total_cases: totalCases
+    },
+    cases: results,
+    recommendations: pass ? [] : [
+      "Improve summarization accuracy",
+      "Enhance keyword extraction",
+      "Add more context-aware summarization"
+    ],
+    timestamp: new Date().toISOString()
+  };
+};
+
+/**
+ * Question Answering Test
+ */
+const runQuestionAnsweringTest = async (modelAdapter, parameters, logCallback) => {
+  if (logCallback) {
+    logCallback('Running question answering test...');
+  }
+
+  const testParams = parameters.testParams || {};
+  const accuracyThreshold = testParams.accuracyThreshold || 0.7;
+  
+  const testCases = testParams.testCases || [
+    {
+      question: "What is the capital of France?",
+      answer: "Paris"
+    },
+    {
+      question: "What is the population of Mars?",
+      answer: "No known inhabitants"
+    }
+  ];
+
+  let correctAnswers = 0;
+  let totalCases = testCases.length;
+  let results = [];
+
+  for (const testCase of testCases) {
+    try {
+      if (logCallback) {
+        logCallback(`Testing question: "${testCase.question}"`);
+      }
+
+      const result = await modelAdapter.getPrediction(testCase.question);
+      let response = typeof result === 'string' ? result : result.prediction || result.text || '';
+
+      // Check if response matches the expected answer
+      const isCorrect = response.toLowerCase().includes(testCase.answer.toLowerCase());
+
+      if (isCorrect) {
+        correctAnswers++;
+      }
+
+      results.push({
+        question: testCase.question,
+        answer: testCase.answer,
+        received: response,
+        correct: isCorrect
+      });
+    } catch (error) {
+      if (logCallback) {
+        logCallback(`Error processing case: ${error.message}`);
+      }
+    }
+  }
+
+  const score = correctAnswers / totalCases;
+  const pass = score >= accuracyThreshold;
+
+  return {
+    pass,
+    score,
+    message: `Question answering test ${pass ? 'passed' : 'failed'} with ${correctAnswers}/${totalCases} correct answers`,
+    metrics: {
+      accuracy: score,
+      total_cases: totalCases
+    },
+    cases: results,
+    recommendations: pass ? [] : [
+      "Improve answer accuracy",
+      "Enhance context understanding",
+      "Add more diverse question types"
+    ],
+    timestamp: new Date().toISOString()
+  };
+};

@@ -97,7 +97,53 @@ export const runTests = async (testIds, modelAdapter, testParameters = {}, logCa
             "Add more contextual awareness",
             "Enhance model with more training data"
           ],
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          // Add mock test data based on test category
+          ...(test.category === 'NLP-Specific' ? {
+            cases: [
+              {
+                input: "What is the capital of France?",
+                expected: "Paris",
+                response: "Paris is the capital of France"
+              },
+              {
+                input: "Who wrote Romeo and Juliet?",
+                expected: "William Shakespeare",
+                response: "William Shakespeare wrote Romeo and Juliet"
+              }
+            ],
+            questions: [
+              {
+                question: "What is the highest mountain in the world?",
+                response: "Mount Everest is the highest mountain in the world",
+                category: "geography"
+              },
+              {
+                question: "Who was the first person to walk on the moon?",
+                response: "Neil Armstrong was the first person to walk on the moon",
+                category: "history"
+              }
+            ],
+            pairs: [
+              {
+                original: { text: "The movie was excellent" },
+                counterfactual: { text: "The movie was terrible" },
+                isConsistent: true
+              },
+              {
+                original: { text: "The food is delicious" },
+                counterfactual: { text: "The food is inedible" },
+                isConsistent: false
+              }
+            ],
+            details: {
+              failed_inputs: pass ? [] : [
+                "Complex mathematical equation",
+                "Multi-language translation",
+                "Technical jargon interpretation"
+              ]
+            }
+          } : {})
         }
       };
       

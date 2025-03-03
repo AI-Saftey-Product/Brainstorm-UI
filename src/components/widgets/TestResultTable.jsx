@@ -12,6 +12,7 @@ import {
   Box,
   Typography,
   Chip,
+  Divider,
 } from '@mui/material';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
@@ -110,6 +111,100 @@ const TestResultRow = ({ item }) => {
                   </Box>
                 </Box>
               )}
+
+              {/* Test Inputs and Outputs Section */}
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Test Inputs and Outputs
+                </Typography>
+                <Paper variant="outlined" sx={{ p: 2 }}>
+                  {/* Display test cases if available */}
+                  {item.result.cases?.map((testCase, index) => (
+                    <Box key={index} sx={{ mb: index < item.result.cases.length - 1 ? 2 : 0 }}>
+                      <Typography variant="body2" color="textSecondary" gutterBottom>
+                        Test Case {index + 1}:
+                      </Typography>
+                      <Box sx={{ pl: 2 }}>
+                        <Typography variant="body2">
+                          <strong>Input:</strong> {testCase.input}
+                        </Typography>
+                        <Typography variant="body2">
+                          <strong>Expected:</strong> {testCase.expected || testCase.source || 'N/A'}
+                        </Typography>
+                        <Typography variant="body2">
+                          <strong>Received:</strong> {testCase.response || testCase.received || 'N/A'}
+                        </Typography>
+                      </Box>
+                      {index < item.result.cases.length - 1 && <Divider sx={{ my: 1 }} />}
+                    </Box>
+                  ))}
+
+                  {/* Display questions if available (for TruthfulQA tests) */}
+                  {item.result.questions?.map((question, index) => (
+                    <Box key={index} sx={{ mb: index < item.result.questions.length - 1 ? 2 : 0 }}>
+                      <Typography variant="body2" color="textSecondary" gutterBottom>
+                        Question {index + 1}:
+                      </Typography>
+                      <Box sx={{ pl: 2 }}>
+                        <Typography variant="body2">
+                          <strong>Question:</strong> {question.question}
+                        </Typography>
+                        <Typography variant="body2">
+                          <strong>Response:</strong> {question.response}
+                        </Typography>
+                        <Typography variant="body2">
+                          <strong>Category:</strong> {question.category}
+                        </Typography>
+                      </Box>
+                      {index < item.result.questions.length - 1 && <Divider sx={{ my: 1 }} />}
+                    </Box>
+                  ))}
+
+                  {/* Display pairs if available (for consistency tests) */}
+                  {item.result.pairs?.map((pair, index) => (
+                    <Box key={index} sx={{ mb: index < item.result.pairs.length - 1 ? 2 : 0 }}>
+                      <Typography variant="body2" color="textSecondary" gutterBottom>
+                        Test Pair {index + 1}:
+                      </Typography>
+                      <Box sx={{ pl: 2 }}>
+                        <Typography variant="body2">
+                          <strong>Original:</strong> {pair.original.text}
+                        </Typography>
+                        <Typography variant="body2">
+                          <strong>Variation:</strong> {pair.counterfactual?.text || 'N/A'}
+                        </Typography>
+                        <Typography variant="body2">
+                          <strong>Consistent:</strong> {pair.isConsistent ? 'Yes' : 'No'}
+                        </Typography>
+                      </Box>
+                      {index < item.result.pairs.length - 1 && <Divider sx={{ my: 1 }} />}
+                    </Box>
+                  ))}
+
+                  {/* Display failed inputs if available */}
+                  {item.result.details?.failed_inputs && (
+                    <Box>
+                      <Typography variant="body2" color="textSecondary" gutterBottom>
+                        Failed Inputs:
+                      </Typography>
+                      <Box sx={{ pl: 2 }}>
+                        {item.result.details.failed_inputs.map((input, index) => (
+                          <Typography key={index} variant="body2">
+                            • {input}
+                          </Typography>
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
+
+                  {/* Fallback message if no input/output data available */}
+                  {!item.result.cases && !item.result.questions && !item.result.pairs && !item.result.details?.failed_inputs && (
+                    <Typography variant="body2" color="textSecondary">
+                      No detailed input/output data available for this test.
+                    </Typography>
+                  )}
+                </Paper>
+              </Box>
             </Box>
           </Collapse>
         </TableCell>

@@ -115,7 +115,7 @@ export const getHuggingFaceModelAdapter = async (modelConfig) => {
     }
     
     // Create a model adapter that uses the Hugging Face API
-    return {
+    const modelAdapter = {
       modelType: modelConfig.modelType,
       modelId,
       source: 'huggingface',
@@ -139,8 +139,15 @@ export const getHuggingFaceModelAdapter = async (modelConfig) => {
           
           const result = await response.json();
           
-          // Process and standardize the response format based on model type
-          return processHuggingFaceResponse(result, modelConfig.modelType);
+          // Process and standardize the response format
+          const processedResult = processHuggingFaceResponse(result, modelConfig.modelType);
+          
+          // Ensure the response has both prediction and text fields
+          return {
+            ...processedResult,
+            text: processedResult.prediction, // Ensure text field is always present
+            raw: result
+          };
         } catch (error) {
           console.error('Error calling Hugging Face API:', error);
           throw error;
@@ -160,6 +167,16 @@ export const getHuggingFaceModelAdapter = async (modelConfig) => {
         };
       }
     };
+
+    // Test the getPrediction method to ensure it's working
+    try {
+      await modelAdapter.getPrediction("Test input");
+    } catch (error) {
+      console.error("Error testing model adapter:", error);
+      throw new Error(`Model adapter initialization failed: ${error.message}`);
+    }
+
+    return modelAdapter;
   } catch (error) {
     console.error(`Error initializing Hugging Face model ${modelId}:`, error);
     throw error;
@@ -174,35 +191,41 @@ export const getHuggingFaceModelAdapter = async (modelConfig) => {
  * @returns {Object} Standardized prediction result
  */
 const processHuggingFaceResponse = (response, modelType) => {
-  // Process the response based on model type
-  switch (modelType) {
-    case 'Text Classification':
-      return {
-        prediction: response,
-        confidence: response[0]?.score || 0,
-        classification: response[0]?.label || '',
-      };
-      
-    case 'Image Classification':
-      return {
-        prediction: response,
-        confidence: response[0]?.score || 0,
-        classification: response[0]?.label || '',
-      };
-      
-    case 'Text Generation':
-      return {
-        prediction: response[0]?.generated_text || response,
-        confidence: 0.9, // Text generation models typically don't provide confidence scores
-      };
-      
-    default:
-      // Default processing for other model types
-      return {
-        prediction: response,
-        confidence: Array.isArray(response) ? response[0]?.score || 0.5 : 0.5,
-      };
+  let prediction;
+  let confidence = 0.5;
+
+  // Handle different response formats
+  if (Array.isArray(response)) {
+    if (response[0]?.generated_text) {
+      prediction = response[0].generated_text;
+      confidence = response[0].score || 0.5;
+    } else if (response[0]?.text) {
+      prediction = response[0].text;
+      confidence = response[0].score || 0.5;
+    } else {
+      prediction = JSON.stringify(response[0]);
+    }
+  } else if (typeof response === 'object') {
+    if (response.generated_text) {
+      prediction = response.generated_text;
+      confidence = response.score || 0.5;
+    } else if (response.text) {
+      prediction = response.text;
+      confidence = response.score || 0.5;
+    } else {
+      prediction = JSON.stringify(response);
+    }
+  } else if (typeof response === 'string') {
+    prediction = response;
+  } else {
+    prediction = JSON.stringify(response);
   }
+
+  return {
+    prediction,
+    confidence,
+    classification: typeof response === 'object' && response.label ? response.label : undefined
+  };
 };
 
 /**
