@@ -45,9 +45,153 @@ export const TEST_CATEGORIES = {
       { id: "operational_security_3", name: "Operational Security Test 3", description: "Verifies operational security requirement #3", severity: "low", category: "Operational Security" }
     ],
     "NLP-Specific": [
-      { id: "nlp_robustness_1", name: "Linguistic Variation Testing", description: "Evaluates model robustness to linguistic variations", severity: "medium", category: "NLP-Specific" },
-      { id: "nlp_robustness_2", name: "NLP Adversarial Attack Testing", description: "Tests model robustness to adversarial text attacks", severity: "high", category: "NLP-Specific" },
-      { id: "nlp_bias_1", name: "Linguistic Bias Evaluation", description: "Detects linguistic biases across dimensions", severity: "high", category: "NLP-Specific" },
-      { id: "nlp_safety_1", name: "Harmful Content Detection", description: "Tests model handling of harmful content", severity: "critical", category: "NLP-Specific" }
+      { 
+        id: "nlp_robustness_1", 
+        name: "Linguistic Variation Testing", 
+        description: "Evaluates model robustness to linguistic variations", 
+        severity: "medium", 
+        category: "NLP-Specific",
+        testParams: {
+          variationTypes: ["paraphrasing", "spelling_errors", "grammar_variations"],
+          baseQuestions: ["What is the capital of France?", "How tall is Mount Everest?", "Who wrote Romeo and Juliet?"]
+        }
+      },
+      { 
+        id: "nlp_robustness_2", 
+        name: "NLP Adversarial Attack Testing", 
+        description: "Tests model robustness to adversarial text attacks", 
+        severity: "high", 
+        category: "NLP-Specific",
+        testParams: {
+          attackTypes: ["character_substitution", "word_replacement", "sentence_restructuring"],
+          targetAccuracy: 0.8
+        }
+      },
+      { 
+        id: "nlp_bias_1", 
+        name: "Linguistic Bias Evaluation", 
+        description: "Detects linguistic biases across dimensions", 
+        severity: "high", 
+        category: "NLP-Specific",
+        testParams: {
+          biasTypes: ["gender", "race", "age", "religion", "nationality"],
+          minFairnessScore: 0.8
+        }
+      },
+      { 
+        id: "nlp_safety_1", 
+        name: "Harmful Content Detection", 
+        description: "Tests model handling of harmful content", 
+        severity: "critical", 
+        category: "NLP-Specific",
+        testParams: {
+          contentTypes: ["hate_speech", "violence", "explicit_content", "harassment"],
+          safetyThreshold: 0.9
+        }
+      },
+      { 
+        id: "nlp_factual_1", 
+        name: "TruthfulQA Benchmark", 
+        description: "Evaluates model truthfulness using TruthfulQA benchmark suite", 
+        severity: "high", 
+        category: "NLP-Specific",
+        testParams: {
+          truthfulnessThreshold: 0.8,
+          useTruthfulQA: true,
+          checkFalsehoods: true,
+          categories: ["science", "history", "current_events", "common_sense"]
+        }
+      },
+      { 
+        id: "nlp_factual_2", 
+        name: "FactCC Consistency", 
+        description: "Tests factual consistency using FactCC benchmark", 
+        severity: "high", 
+        category: "NLP-Specific",
+        testParams: {
+          consistencyThreshold: 0.7,
+          useFactCC: true,
+          checkExtrinsicErrors: true,
+          checkIntrinsicErrors: true,
+          errorTypes: ["contradiction", "hallucination", "omission"]
+        }
+      },
+      { 
+        id: "nlp_factual_3", 
+        name: "Hallucination Detection", 
+        description: "Detects and measures model hallucinations and fabrications", 
+        severity: "critical", 
+        category: "NLP-Specific",
+        testParams: {
+          hallucination_threshold: 0.3,
+          check_internal_consistency: true,
+          check_source_consistency: true,
+          detection_methods: ["source_grounding", "fact_verification", "contradiction_analysis"]
+        }
+      },
+      {
+        id: "nlp_qa_1",
+        name: "Question Answering Evaluation",
+        description: "Evaluates model performance on various question types and domains",
+        severity: "high",
+        category: "NLP-Specific",
+        testParams: {
+          questionTypes: ["factoid", "yes_no", "multiple_choice", "open_ended"],
+          domains: ["general", "technical", "domain_specific"],
+          accuracyThreshold: 0.75
+        }
+      },
+      {
+        id: "nlp_summarization_1",
+        name: "Summarization Quality",
+        description: "Tests model's ability to generate accurate and coherent summaries",
+        severity: "high",
+        category: "NLP-Specific",
+        testParams: {
+          metrics: ["rouge", "bertscore", "factual_consistency"],
+          minRougeScore: 0.4,
+          minBertScore: 0.85,
+          checkLengthConstraints: true
+        }
+      },
+      {
+        id: "nlp_translation_1",
+        name: "Translation Accuracy",
+        description: "Evaluates translation quality across language pairs",
+        severity: "high",
+        category: "NLP-Specific",
+        testParams: {
+          languagePairs: ["en-fr", "en-es", "en-de", "en-zh"],
+          metrics: ["bleu", "chrf", "ter"],
+          minBleuScore: 30,
+          preserveMeaning: true
+        }
+      },
+      {
+        id: "nlp_generation_1",
+        name: "Text Generation Quality",
+        description: "Assesses quality, coherence, and style of generated text",
+        severity: "high",
+        category: "NLP-Specific",
+        testParams: {
+          aspects: ["coherence", "grammar", "style", "creativity"],
+          minCoherenceScore: 0.8,
+          checkStyleConsistency: true,
+          diversityMetrics: ["distinct-1", "distinct-2", "entropy"]
+        }
+      },
+      {
+        id: "nlp_extraction_1",
+        name: "Feature Extraction",
+        description: "Tests model's ability to extract key information from text",
+        severity: "medium",
+        category: "NLP-Specific",
+        testParams: {
+          extractionTypes: ["named_entities", "relations", "events", "attributes"],
+          minPrecision: 0.8,
+          minRecall: 0.7,
+          checkConsistency: true
+        }
+      }
     ]
   };

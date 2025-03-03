@@ -43,8 +43,12 @@ const createHuggingFaceAdapter = async (modelConfig) => {
       getPrediction: async (input) => {
         try {
           const result = await model.query(input);
+          const prediction = typeof result === 'string' ? result : 
+                           Array.isArray(result) ? result[0]?.generated_text || result[0] : 
+                           result.generated_text || result.text || JSON.stringify(result);
           return {
-            prediction: result,
+            prediction,
+            text: prediction,
             confidence: extractConfidence(result),
             raw: result
           };

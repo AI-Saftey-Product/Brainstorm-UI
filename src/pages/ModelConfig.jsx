@@ -125,10 +125,12 @@ const ModelConfigPage = () => {
           modelType: formValues.modelType,
           source: 'mock',
           getPrediction: (input) => {
+            const mockResponse = `Mock response to: "${input}"`;
             return {
-              prediction: [0.7, 0.3],
+              prediction: mockResponse,
               confidence: 0.7,
-              input_length: input.length
+              text: mockResponse,
+              raw: { generated_text: mockResponse }
             };
           },
           getModelInfo: () => {
