@@ -31,18 +31,22 @@ const AppSidebar = ({ open, currentPath, modelConfigured }) => {
   console.log('Sidebar modelConfigured:', modelConfigured);
   console.log('Sidebar modelConfig:', modelConfig);
   
-  const menuItems = [
-    { id: '/', text: 'Home', icon: <HomeIcon />, enabled: true },
-    { id: '/model-config', text: 'Model Configuration', icon: <SettingsIcon />, enabled: true },
-    { id: '/test-config', text: 'Test Configuration', icon: <CheckBoxIcon />, enabled: modelConfigured },
-    { id: '/run-tests', text: 'Run Tests', icon: <PlayArrowIcon />, enabled: modelConfigured },
-    { id: '/results', text: 'Results Dashboard', icon: <AssessmentIcon />, enabled: modelConfigured }
-  ];
-
   const handleNavigation = (path) => {
-    console.log('Navigating to:', path);
+    console.log('Sidebar: Attempting to navigate to:', path);
+    console.log('Sidebar: Current path is:', currentPath);
+    console.log('Sidebar: modelConfigured:', modelConfigured);
+    
+    // Use React Router's navigate function directly
     navigate(path);
   };
+
+  const menuItems = [
+    { id: 'home', path: '/', text: 'Home', icon: <HomeIcon />, enabled: true },
+    { id: 'model-config', path: 'model-config', text: 'Model Configuration', icon: <SettingsIcon />, enabled: true },
+    { id: 'test-config', path: 'test-config', text: 'Test Configuration', icon: <CheckBoxIcon />, enabled: modelConfigured },
+    { id: 'run-tests', path: 'run-tests', text: 'Run Tests', icon: <PlayArrowIcon />, enabled: modelConfigured },
+    { id: 'results', path: 'results', text: 'Results Dashboard', icon: <AssessmentIcon />, enabled: modelConfigured }
+  ];
 
   return (
     <Drawer
@@ -65,8 +69,8 @@ const AppSidebar = ({ open, currentPath, modelConfigured }) => {
           {menuItems.map((item) => (
             <ListItem key={item.id} disablePadding>
               <ListItemButton 
-                selected={currentPath === item.id}
-                onClick={() => item.enabled && handleNavigation(item.id)}
+                selected={currentPath === item.path}
+                onClick={() => item.enabled && handleNavigation(item.path)}
                 disabled={!item.enabled}
                 sx={{
                   borderRadius: '0 24px 24px 0',
@@ -79,7 +83,7 @@ const AppSidebar = ({ open, currentPath, modelConfigured }) => {
                   },
                 }}
               >
-                <ListItemIcon sx={{ color: currentPath === item.id ? 'primary.main' : 'inherit' }}>
+                <ListItemIcon sx={{ color: currentPath === item.path ? 'primary.main' : 'inherit' }}>
                   {item.icon}
                 </ListItemIcon>
                 <ListItemText primary={item.text} />

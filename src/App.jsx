@@ -35,8 +35,13 @@ function App() {
   
   // For debugging
   console.log('App: Current path:', location.pathname);
-  console.log('App: Model configured:', modelConfigured);
+  console.log('App: Model configured:', modelConfigured, typeof modelConfigured);
   console.log('App: Model config:', modelConfig);
+  
+  // More detailed debugging for context values
+  useEffect(() => {
+    console.log('App: modelConfigured changed:', modelConfigured);
+  }, [modelConfigured]);
   
   return (
     <Box sx={{ display: 'flex', height: '100vh' }}>
@@ -74,7 +79,7 @@ function App() {
             <Route 
               path="/run-tests" 
               element={
-                modelConfigured ? <RunTestsPage /> : <Navigate to="/model-config" />
+                <RunTestsPage />
               } 
             />
             <Route 

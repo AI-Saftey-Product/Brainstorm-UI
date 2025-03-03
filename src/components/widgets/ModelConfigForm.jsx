@@ -121,6 +121,21 @@ const ModelConfigForm = ({
     });
   };
 
+  const getRecommendedModelText = (modelType) => {
+    const recommendations = {
+      'Text Generation': " Try: gpt2, EleutherAI/gpt-neo-125M, facebook/opt-125m",
+      'Text Classification': " Try: distilbert-base-uncased-finetuned-sst-2-english, roberta-base-openai-detector",
+      'Summarization': " Try: facebook/bart-large-cnn, sshleifer/distilbart-cnn-12-6",
+      'Translation': " Try: Helsinki-NLP/opus-mt-en-fr, t5-small",
+      'Question Answering': " Try: distilbert-base-cased-distilled-squad, deepset/roberta-base-squad2",
+      'Image Classification': " Try: google/vit-base-patch16-224, microsoft/resnet-50",
+      'Object Detection': " Try: facebook/detr-resnet-50",
+      'Audio Classification': " Try: superb/hubert-large-superb-er"
+    };
+    
+    return recommendations[modelType] || " Popular options: gpt2, bert-base-uncased, facebook/bart-large-cnn";
+  };
+
   const renderCategoryConfig = () => {
     switch (formValues.modelCategory) {
       case 'Vision':
@@ -308,9 +323,28 @@ const ModelConfigForm = ({
             label="Load real pretrained model (may take longer)"
           />
           {formValues.useRealModel && (
-            <FormHelperText>
-              When enabled, will load actual pretrained models from Hugging Face for testing.
-            </FormHelperText>
+            <>
+              <FormHelperText>
+                When enabled, will load actual pretrained models from Hugging Face for testing.
+              </FormHelperText>
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Hugging Face Model ID"
+                placeholder="e.g., gpt2, facebook/bart-large-cnn"
+                value={formValues.modelId || ''}
+                onChange={handleChange('modelId')}
+                required
+                error={!!errors.modelId}
+                helperText={
+                  errors.modelId || 
+                  <>
+                    Enter the exact model ID as it appears on Hugging Face. 
+                    {formValues.modelType && getRecommendedModelText(formValues.modelType)}
+                  </>
+                }
+              />
+            </>
           )}
         </Grid>
       </Grid>
