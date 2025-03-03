@@ -9,6 +9,8 @@ import {
   MenuItem,
   Grid,
   FormHelperText,
+  FormControlLabel,
+  Switch,
 } from '@mui/material';
 
 const MODEL_CATEGORIES = {
@@ -45,6 +47,7 @@ const ModelConfigForm = ({
     modelCategory: initialValues.modelCategory || '',
     modelType: initialValues.modelType || '',
     modelId: initialValues.modelId || '',
+    verbose: initialValues.verbose || false,
     ...initialValues
   });
 
@@ -146,6 +149,22 @@ const ModelConfigForm = ({
             error={!!errors.modelId}
             helperText={errors.modelId || (formValues.modelType && getRecommendedModelText(formValues.modelType))}
           />
+        </Grid>
+
+        <Grid item xs={12}>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={formValues.verbose}
+                onChange={(e) => handleChange('verbose')({ target: { value: e.target.checked } })}
+                color="primary"
+              />
+            }
+            label="Enable Verbose Logging"
+          />
+          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mt: 1 }}>
+            Show detailed logs during model initialization and testing
+          </Typography>
         </Grid>
       </Grid>
     </Box>

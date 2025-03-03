@@ -15,6 +15,7 @@ import ModelConfigForm from '../components/widgets/ModelConfigForm';
 import { useAppContext } from '../context/AppContext';
 import huggingFaceService from '../services/huggingFaceService';
 import { createModelAdapter } from '../services/modelAdapter';
+import { saveModelConfig } from '../services/modelStorageService';
 
 const ModelConfigPage = () => {
   const navigate = useNavigate();
@@ -25,7 +26,8 @@ const ModelConfigPage = () => {
     modelCategory: '',
     modelType: '',
     modelId: '',
-    selectedModel: '' // This will store the Hugging Face model ID
+    selectedModel: '', // This will store the Hugging Face model ID
+    verbose: false
   });
   const [validationErrors, setValidationErrors] = useState({});
   const [loading, setLoading] = useState(false);
@@ -89,9 +91,10 @@ const ModelConfigPage = () => {
       
       // Create the model adapter with proper configuration
       const modelAdapter = await createModelAdapter({
-        selectedModel: formValues.modelId, // Use modelId as the selectedModel
+        selectedModel: formValues.modelId,
         modelType: formValues.modelType,
-        modelCategory: formValues.modelCategory
+        modelCategory: formValues.modelCategory,
+        verbose: formValues.verbose
       });
 
       setModelInitStatus(`Hugging Face model "${formValues.modelId}" initialized successfully!`);
@@ -99,12 +102,13 @@ const ModelConfigPage = () => {
       // Gather configuration with the properly initialized adapter
       const modelConfig = {
         ...formValues,
-        modelAdapter, // This should now have getPrediction properly defined
+        modelAdapter,
         type: formValues.modelType
       };
       
-      // Save configuration using context
+      // Save configuration using context and storage service
       configureModel(modelConfig);
+      await saveModelConfig(modelConfig);
       
       setConfigSuccess(true);
       setSnackbarOpen(true);

@@ -25,7 +25,11 @@ import { formatTimestamp } from '../../utils/formatters';
 
 const TestResultRow = ({ item }) => {
   const [open, setOpen] = useState(false);
-  
+
+  if (!item || !item.test || !item.result) {
+    return null;
+  }
+
   return (
     <>
       <TableRow hover>
@@ -115,90 +119,119 @@ const TestResultRow = ({ item }) => {
               {/* Test Inputs and Outputs Section */}
               <Box sx={{ mt: 2 }}>
                 <Typography variant="subtitle2" gutterBottom>
-                  Test Inputs and Outputs
+                  Test Details
                 </Typography>
                 <Paper variant="outlined" sx={{ p: 2 }}>
                   {/* Display test cases if available */}
-                  {item.result.cases?.map((testCase, index) => (
-                    <Box key={index} sx={{ mb: index < item.result.cases.length - 1 ? 2 : 0 }}>
-                      <Typography variant="body2" color="textSecondary" gutterBottom>
-                        Test Case {index + 1}:
+                  {item.result.cases && item.result.cases.length > 0 && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                        Test Cases:
                       </Typography>
-                      <Box sx={{ pl: 2 }}>
-                        <Typography variant="body2">
-                          <strong>Input:</strong> {testCase.input}
-                        </Typography>
-                        <Typography variant="body2">
-                          <strong>Expected:</strong> {testCase.expected || testCase.source || 'N/A'}
-                        </Typography>
-                        <Typography variant="body2">
-                          <strong>Received:</strong> {testCase.response || testCase.received || 'N/A'}
-                        </Typography>
-                      </Box>
-                      {index < item.result.cases.length - 1 && <Divider sx={{ my: 1 }} />}
+                      {item.result.cases.map((testCase, index) => (
+                        <Box key={index} sx={{ mb: 2, pl: 2 }}>
+                          <Typography variant="body2">
+                            <strong>Input:</strong> {testCase.input}
+                          </Typography>
+                          <Typography variant="body2">
+                            <strong>Expected:</strong> {testCase.expected}
+                          </Typography>
+                          <Typography variant="body2">
+                            <strong>Actual:</strong> {testCase.actual}
+                          </Typography>
+                          {index < item.result.cases.length - 1 && <Divider sx={{ my: 1 }} />}
+                        </Box>
+                      ))}
                     </Box>
-                  ))}
+                  )}
 
                   {/* Display questions if available (for TruthfulQA tests) */}
-                  {item.result.questions?.map((question, index) => (
-                    <Box key={index} sx={{ mb: index < item.result.questions.length - 1 ? 2 : 0 }}>
-                      <Typography variant="body2" color="textSecondary" gutterBottom>
-                        Question {index + 1}:
+                  {item.result.questions && item.result.questions.length > 0 && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                        Questions:
                       </Typography>
-                      <Box sx={{ pl: 2 }}>
-                        <Typography variant="body2">
-                          <strong>Question:</strong> {question.question}
-                        </Typography>
-                        <Typography variant="body2">
-                          <strong>Response:</strong> {question.response}
-                        </Typography>
-                        <Typography variant="body2">
-                          <strong>Category:</strong> {question.category}
-                        </Typography>
-                      </Box>
-                      {index < item.result.questions.length - 1 && <Divider sx={{ my: 1 }} />}
+                      {item.result.questions.map((question, index) => (
+                        <Box key={index} sx={{ mb: 2, pl: 2 }}>
+                          <Typography variant="body2">
+                            <strong>Question:</strong> {question.question}
+                          </Typography>
+                          <Typography variant="body2">
+                            <strong>Response:</strong> {question.response}
+                          </Typography>
+                          {question.expected && (
+                            <Typography variant="body2">
+                              <strong>Expected:</strong> {question.expected}
+                            </Typography>
+                          )}
+                          {question.category && (
+                            <Typography variant="body2">
+                              <strong>Category:</strong> {question.category}
+                            </Typography>
+                          )}
+                          {index < item.result.questions.length - 1 && <Divider sx={{ my: 1 }} />}
+                        </Box>
+                      ))}
                     </Box>
-                  ))}
+                  )}
 
-                  {/* Display pairs if available (for consistency tests) */}
-                  {item.result.pairs?.map((pair, index) => (
-                    <Box key={index} sx={{ mb: index < item.result.pairs.length - 1 ? 2 : 0 }}>
-                      <Typography variant="body2" color="textSecondary" gutterBottom>
-                        Test Pair {index + 1}:
+                  {/* Display pairs if available (for counterfactual/factCC tests) */}
+                  {item.result.pairs && item.result.pairs.length > 0 && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                        Test Pairs:
                       </Typography>
-                      <Box sx={{ pl: 2 }}>
-                        <Typography variant="body2">
-                          <strong>Original:</strong> {pair.original.text}
-                        </Typography>
-                        <Typography variant="body2">
-                          <strong>Variation:</strong> {pair.counterfactual?.text || 'N/A'}
-                        </Typography>
-                        <Typography variant="body2">
-                          <strong>Consistent:</strong> {pair.isConsistent ? 'Yes' : 'No'}
-                        </Typography>
-                      </Box>
-                      {index < item.result.pairs.length - 1 && <Divider sx={{ my: 1 }} />}
+                      {item.result.pairs.map((pair, index) => (
+                        <Box key={index} sx={{ mb: 2, pl: 2 }}>
+                          <Typography variant="body2">
+                            <strong>Original:</strong> {pair.original}
+                          </Typography>
+                          <Typography variant="body2">
+                            <strong>Modified:</strong> {pair.modified}
+                          </Typography>
+                          {pair.originalResponse && (
+                            <Typography variant="body2">
+                              <strong>Original Response:</strong> {pair.originalResponse}
+                            </Typography>
+                          )}
+                          {pair.modifiedResponse && (
+                            <Typography variant="body2">
+                              <strong>Modified Response:</strong> {pair.modifiedResponse}
+                            </Typography>
+                          )}
+                          {index < item.result.pairs.length - 1 && <Divider sx={{ my: 1 }} />}
+                        </Box>
+                      ))}
                     </Box>
-                  ))}
+                  )}
 
                   {/* Display failed inputs if available */}
-                  {item.result.details?.failed_inputs && (
-                    <Box>
-                      <Typography variant="body2" color="textSecondary" gutterBottom>
+                  {item.result.details?.failed_inputs && item.result.details.failed_inputs.length > 0 && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" color="textSecondary" gutterBottom>
                         Failed Inputs:
                       </Typography>
-                      <Box sx={{ pl: 2 }}>
-                        {item.result.details.failed_inputs.map((input, index) => (
-                          <Typography key={index} variant="body2">
-                            • {input}
+                      {item.result.details.failed_inputs.map((input, index) => (
+                        <Box key={index} sx={{ mb: 1, pl: 2 }}>
+                          <Typography variant="body2">
+                            <strong>Input:</strong> {input.input || input}
                           </Typography>
-                        ))}
-                      </Box>
+                          {input.reason && (
+                            <Typography variant="body2" color="error">
+                              <strong>Reason:</strong> {input.reason}
+                            </Typography>
+                          )}
+                          {index < item.result.details.failed_inputs.length - 1 && <Divider sx={{ my: 1 }} />}
+                        </Box>
+                      ))}
                     </Box>
                   )}
 
                   {/* Fallback message if no input/output data available */}
-                  {!item.result.cases && !item.result.questions && !item.result.pairs && !item.result.details?.failed_inputs && (
+                  {!item.result.cases?.length && 
+                   !item.result.questions?.length && 
+                   !item.result.pairs?.length && 
+                   !item.result.details?.failed_inputs?.length && (
                     <Typography variant="body2" color="textSecondary">
                       No detailed input/output data available for this test.
                     </Typography>
@@ -213,9 +246,14 @@ const TestResultRow = ({ item }) => {
   );
 };
 
-const TestResultTable = ({ results, filters = {} }) => {
+const TestResultTable = ({ results = {}, filters = {} }) => {
+  // Ensure results is an object and not null/undefined
+  const safeResults = results && typeof results === 'object' ? results : {};
+  
   // Apply filters if provided
-  const filteredResults = Object.values(results).filter(item => {
+  const filteredResults = Object.values(safeResults).filter(item => {
+    if (!item || !item.test || !item.result) return false;
+    
     if (filters.category && filters.category !== 'all' && item.test.category !== filters.category) {
       return false;
     }

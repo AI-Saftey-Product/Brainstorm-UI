@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -134,10 +134,13 @@ const ResultsPage = () => {
   
   // Calculate overall compliance score
   const calculateOverallScore = () => {
-    if (!complianceScores || Object.keys(complianceScores).length === 0) return 0;
+    if (!complianceScores || typeof complianceScores !== 'object') return 0;
     
-    const totalPassed = Object.values(complianceScores).reduce((sum, score) => sum + score.passed, 0);
-    const totalTests = Object.values(complianceScores).reduce((sum, score) => sum + score.total, 0);
+    const scores = Object.values(complianceScores);
+    if (scores.length === 0) return 0;
+    
+    const totalPassed = scores.reduce((sum, score) => sum + (score?.passed || 0), 0);
+    const totalTests = scores.reduce((sum, score) => sum + (score?.total || 0), 0);
     
     return totalTests > 0 ? (totalPassed / totalTests) * 100 : 0;
   };
@@ -145,14 +148,14 @@ const ResultsPage = () => {
   const overallScore = calculateOverallScore();
   
   // Check if we have results to display
-  const hasResults = testResults && Object.keys(testResults).length > 0;
+  const hasResults = testResults && typeof testResults === 'object' && Object.keys(testResults).length > 0;
   
   // Statistics
   const getStats = () => {
     if (!hasResults) return { total: 0, passed: 0, failed: 0 };
     
     const total = Object.keys(testResults).length;
-    const passed = Object.values(testResults).filter(result => result.result.pass).length;
+    const passed = Object.values(testResults).filter(result => result?.result?.pass).length;
     
     return {
       total,
