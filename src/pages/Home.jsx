@@ -70,14 +70,14 @@ const HomePage = () => {
             WebkitTextFillColor: 'transparent',
           }}
         >
-          AI Compliance Testing Platform
+          AI Safety Testing Platform
         </Typography>
         <Typography 
           variant="h6" 
           color="textSecondary" 
           sx={{ mb: 4, maxWidth: 800, mx: 'auto' }}
         >
-          Ensure your AI models meet regulatory requirements and ethical standards with our comprehensive testing suite.
+          Ensure your AI models meet regulatory requirements and safety standards with our comprehensive testing suite.
         </Typography>
         <Button 
           variant="contained" 

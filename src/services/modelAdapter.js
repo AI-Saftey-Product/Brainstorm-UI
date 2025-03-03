@@ -1,6 +1,6 @@
 /**
  * Model Adapter Service
- * Provides adapters for different model types (mock or real) to standardize interaction
+ * Provides adapters for different model types to standardize interaction
  */
 
 import { getHuggingFaceModel } from './huggingFaceService';
@@ -11,13 +11,7 @@ import { getHuggingFaceModel } from './huggingFaceService';
  * @returns {Object} - Model adapter with standardized interface
  */
 export const createModelAdapter = async (modelConfig) => {
-  // If using a real model from Hugging Face
-  if (modelConfig.useRealModel) {
-    return await createHuggingFaceAdapter(modelConfig);
-  }
-  
-  // Default to mock model if not using real model
-  return createMockAdapter(modelConfig);
+  return await createHuggingFaceAdapter(modelConfig);
 };
 
 /**
@@ -27,8 +21,23 @@ export const createModelAdapter = async (modelConfig) => {
  */
 const createHuggingFaceAdapter = async (modelConfig) => {
   try {
+    // Validate API key
+    if (!import.meta.env.VITE_HUGGING_FACE_API_KEY) {
+      throw new Error('Hugging Face API key not found. Please add it to your .env file as VITE_HUGGING_FACE_API_KEY.');
+    }
+
     // Initialize the Hugging Face model
+    console.log(`Initializing Hugging Face model with ID: ${modelConfig.selectedModel}`);
     const model = await getHuggingFaceModel(modelConfig.selectedModel);
+    
+    // Test the model with a simple query
+    try {
+      await model.query("Test query to verify model initialization");
+      console.log("Model initialization successful");
+    } catch (error) {
+      console.error("Model initialization test failed:", error);
+      throw new Error(`Model initialization failed: ${error.message}`);
+    }
     
     return {
       modelType: 'huggingface',
@@ -42,10 +51,15 @@ const createHuggingFaceAdapter = async (modelConfig) => {
        */
       getPrediction: async (input) => {
         try {
+          if (!input || typeof input !== 'string') {
+            throw new Error('Invalid input: Input must be a non-empty string');
+          }
+
           const result = await model.query(input);
           const prediction = typeof result === 'string' ? result : 
                            Array.isArray(result) ? result[0]?.generated_text || result[0] : 
                            result.generated_text || result.text || JSON.stringify(result);
+          
           return {
             prediction,
             text: prediction,
@@ -54,7 +68,7 @@ const createHuggingFaceAdapter = async (modelConfig) => {
           };
         } catch (error) {
           console.error('Error getting prediction from Hugging Face model:', error);
-          throw error;
+          throw new Error(`Prediction failed: ${error.message}`);
         }
       },
       
@@ -74,61 +88,6 @@ const createHuggingFaceAdapter = async (modelConfig) => {
     console.error('Error creating Hugging Face adapter:', error);
     throw error;
   }
-};
-
-/**
- * Creates a mock model adapter for testing without real models
- * @param {Object} modelConfig - Configuration for the mock model
- * @returns {Object} - Model adapter with standardized interface
- */
-const createMockAdapter = (modelConfig) => {
-  return {
-    modelType: 'mock',
-    modelId: 'mock-model',
-    source: 'mock',
-    
-    /**
-     * Get a prediction from the mock model
-     * @param {string} input - The input text to predict on
-     * @returns {Promise<Object>} - The mock prediction result
-     */
-    getPrediction: async (input) => {
-      // Wait a random time to simulate processing
-      await new Promise(resolve => setTimeout(resolve, Math.random() * 500 + 100));
-      
-      // Generate different responses based on input patterns
-      let prediction;
-      
-      if (input.toLowerCase().includes('capital') && input.toLowerCase().includes('france')) {
-        prediction = "The capital of France is Paris.";
-      } else if (input.toLowerCase().includes('hello') && input.toLowerCase().includes('spanish')) {
-        prediction = "Hello in Spanish is 'Hola'.";
-      } else if (input.toLowerCase().includes('hack') || input.toLowerCase().includes('illegal')) {
-        prediction = "I'm sorry, I cannot provide information on illegal activities or hacking.";
-      } else {
-        // Default mock response
-        prediction = `Mock response to: "${input.substring(0, 30)}${input.length > 30 ? '...' : ''}"`;
-      }
-      
-      return {
-        prediction,
-        confidence: Math.random() * 0.4 + 0.6, // Random confidence between 0.6 and 1.0
-        raw: { generated_text: prediction }
-      };
-    },
-    
-    /**
-     * Get model information
-     * @returns {Object} - Information about the mock model
-     */
-    getModelInfo: () => {
-      return {
-        name: "Mock Model",
-        type: 'mock',
-        parameters: modelConfig.parameters || {}
-      };
-    }
-  };
 };
 
 /**

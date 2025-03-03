@@ -63,25 +63,44 @@ export const getHuggingFaceModel = async (modelId) => {
  */
 const queryModel = async (modelId, input) => {
   try {
-    const response = await fetch(`${HUGGING_FACE_API_URL}${modelId}`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${HUGGING_FACE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ inputs: input }),
-    });
+    // Add retry logic
+    const maxRetries = 3;
+    let lastError = null;
     
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(`API request failed: ${response.status} ${response.statusText} - ${errorData.error || ''}`);
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await fetch(`${HUGGING_FACE_API_URL}${modelId}`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${HUGGING_FACE_API_KEY}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify({ inputs: input }),
+          mode: 'cors',
+          credentials: 'same-origin'
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(`API request failed: ${response.status} ${response.statusText} - ${errorData.error || ''}`);
+        }
+        
+        const data = await response.json();
+        return data;
+      } catch (error) {
+        lastError = error;
+        if (attempt < maxRetries) {
+          // Wait before retrying (exponential backoff)
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+          continue;
+        }
+        throw error;
+      }
     }
-    
-    const data = await response.json();
-    return data;
   } catch (error) {
     console.error(`Error querying model ${modelId}:`, error);
-    throw error;
+    throw new Error(`Failed to fetch response from model: ${error.message}`);
   }
 };
 
