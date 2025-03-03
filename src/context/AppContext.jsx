@@ -70,8 +70,14 @@ export const AppProvider = ({ children }) => {
 
   // Save test configuration
   const saveTestConfiguration = (tests) => {
+    // Update selected tests
     setSelectedTests(tests);
+    
+    // Save to localStorage
     localStorage.setItem('selectedTests', JSON.stringify(tests));
+    
+    // Return true to indicate success
+    return true;
   };
 
   // Update test parameters

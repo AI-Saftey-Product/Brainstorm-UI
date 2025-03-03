@@ -64,6 +64,8 @@ const TestConfigPage = () => {
   const [loading, setLoading] = useState(false);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState(null);
   
   // Add useRealModel state
   const [useRealModel, setUseRealModel] = useState(false);
@@ -145,15 +147,22 @@ const TestConfigPage = () => {
   };
   
   const handleSaveConfiguration = () => {
+    if (localSelectedTests.length === 0) {
+      setSnackbarMessage('Please select at least one test to run');
+      setSnackbarOpen(true);
+      return;
+    }
+    
     setLoading(true);
     
-    // Simulate saving with a delay
-    setTimeout(() => {
-      saveTestConfiguration(localSelectedTests);
-      setSaveSuccess(true);
-      setSnackbarOpen(true);
-      setLoading(false);
-    }, 1000);
+    // Save configuration immediately without timeout
+    saveTestConfiguration(localSelectedTests);
+    setSaveSuccess(true);
+    setSnackbarOpen(true);
+    setLoading(false);
+    
+    // Set snackbar message
+    setSnackbarMessage('Test configuration saved successfully!');
   };
 
   const handleCloseSnackbar = () => {
@@ -168,11 +177,14 @@ const TestConfigPage = () => {
       return;
     }
     
+    // Save configuration before navigating
+    saveTestConfiguration(localSelectedTests);
+    
     // Create model configuration
     const modelConfig = {
       useRealModel,
       selectedModel,
-      parameters: {}  // We can add more parameters here if needed
+      parameters: {}
     };
     
     // Navigate to test execution page with selected tests and model config
@@ -504,6 +516,66 @@ const TestConfigPage = () => {
     }
   };
   
+  // Check for unsaved changes
+  const hasUnsavedChanges = () => {
+    return JSON.stringify(localSelectedTests) !== JSON.stringify(selectedTests);
+  };
+
+  // Handle navigation with unsaved changes
+  const handleNavigationWithCheck = (path) => {
+    if (hasUnsavedChanges()) {
+      setPendingNavigation(path);
+      setConfirmDialogOpen(true);
+    } else {
+      navigate(path);
+    }
+  };
+
+  // Handle navigation confirmation
+  const handleNavigationConfirm = () => {
+    if (pendingNavigation) {
+      saveTestConfiguration(localSelectedTests);
+      navigate(pendingNavigation);
+    }
+    setConfirmDialogOpen(false);
+    setPendingNavigation(null);
+  };
+
+  // Handle navigation cancellation
+  const handleNavigationCancel = () => {
+    setConfirmDialogOpen(false);
+    setPendingNavigation(null);
+  };
+
+  // Add navigation event listener
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (hasUnsavedChanges()) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [localSelectedTests, selectedTests]);
+
+  // Listen for navigation attempts
+  useEffect(() => {
+    const handleNavigation = (event) => {
+      if (hasUnsavedChanges()) {
+        event.preventDefault();
+        handleNavigationWithCheck(event.detail);
+      } else {
+        // If no unsaved changes, navigate directly
+        navigate(event.detail);
+      }
+    };
+    
+    window.addEventListener('navigate', handleNavigation);
+    return () => window.removeEventListener('navigate', handleNavigation);
+  }, [localSelectedTests, selectedTests, navigate, hasUnsavedChanges, handleNavigationWithCheck]);
+
   return (
     <Container maxWidth="lg">
       <Typography variant="h4" gutterBottom>
@@ -613,6 +685,37 @@ const TestConfigPage = () => {
       )}
       
       {renderConfigurationDialog()}
+      
+      <Dialog
+        open={confirmDialogOpen}
+        onClose={handleNavigationCancel}
+      >
+        <DialogTitle>Unsaved Changes</DialogTitle>
+        <DialogContent>
+          <Typography>
+            You have unsaved changes in your test configuration. Would you like to save these changes before leaving?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleNavigationCancel}>Cancel</Button>
+          <Button 
+            onClick={() => {
+              navigate(pendingNavigation);
+              setConfirmDialogOpen(false);
+            }}
+            color="error"
+          >
+            Discard Changes
+          </Button>
+          <Button 
+            onClick={handleNavigationConfirm} 
+            variant="contained" 
+            color="primary"
+          >
+            Save & Continue
+          </Button>
+        </DialogActions>
+      </Dialog>
       
       <Snackbar
         open={snackbarOpen}
