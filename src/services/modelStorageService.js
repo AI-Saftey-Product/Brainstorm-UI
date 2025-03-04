@@ -7,6 +7,12 @@ export const saveModelConfig = (config) => {
   try {
     const savedConfigs = getSavedModelConfigs();
     const timestamp = new Date().toISOString();
+    
+    // Ensure selectedModel is set if missing but modelId exists
+    if (!config.selectedModel && config.modelId) {
+      config.selectedModel = config.modelId;
+    }
+    
     const configWithMeta = {
       ...config,
       id: `model_${timestamp}`,
@@ -104,6 +110,11 @@ export const updateModelConfig = (modelId, updates) => {
     
     if (index === -1) {
       throw new Error('Model configuration not found');
+    }
+    
+    // Ensure selectedModel is set if missing but modelId exists in updates
+    if (updates.modelId && !updates.selectedModel) {
+      updates.selectedModel = updates.modelId;
     }
     
     configs[index] = {

@@ -43,6 +43,11 @@ import { useAppContext } from '../context/AppContext';
 import { MOCK_TESTS, TEST_CATEGORIES } from '../constants/testCategories';
 import SeverityChip from '../components/common/SeverityChip';
 import CategoryChip from '../components/common/CategoryChip';
+import { 
+  getFilteredTests, 
+  getTestCategories, 
+  getModelModalities 
+} from '../services/testsService';
 
 const TestConfigPage = () => {
   const navigate = useNavigate();
@@ -50,9 +55,8 @@ const TestConfigPage = () => {
     selectedTests, 
     saveTestConfiguration, 
     testParameters, 
-    updateTestParameter, 
-    modelType,
-    modelCategory
+    updateTestParameter,
+    modelConfigured
   } = useAppContext();
   
   const [currentTab, setCurrentTab] = useState(0);
@@ -61,45 +65,81 @@ const TestConfigPage = () => {
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
   const [currentTestForConfig, setCurrentTestForConfig] = useState(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState(null);
   
-  // Add useRealModel state
-  const [useRealModel, setUseRealModel] = useState(false);
-  
-  // Add selectedModel state
-  const [selectedModel, setSelectedModel] = useState('gpt2');
-  
-  // Add available models list
-  const availableModels = [
-    { id: 'gpt2', name: 'GPT-2 (Small)' },
-    { id: 'gpt2-medium', name: 'GPT-2 (Medium)' },
-    { id: 'facebook/bart-large-cnn', name: 'BART (Large CNN)' },
-    { id: 'microsoft/DialoGPT-medium', name: 'DialoGPT (Medium)' },
-    { id: 'distilbert-base-uncased', name: 'DistilBERT' }
-  ];
+  // Get model configuration from context
+  const modelConfig = modelConfigured || {
+    modality: 'text',
+    model_type: 'text',
+    parameters: {}
+  };
   
   // Get categories based on available tests
-  const categories = Object.keys(TEST_CATEGORIES);
+  const [categories, setCategories] = useState([]);
+  const [availableTests, setAvailableTests] = useState([]);
+  const [error, setError] = useState(null);
   
   // Initialize local state from context
   useEffect(() => {
     setLocalSelectedTests(selectedTests || []);
   }, [selectedTests]);
   
+  // Fetch categories and modalities on component mount
+  useEffect(() => {
+    const fetchInitialData = async () => {
+      try {
+        setLoading(true);
+        const [categoriesData, modalitiesData] = await Promise.all([
+          getTestCategories(),
+          getModelModalities()
+        ]);
+        setCategories(categoriesData);
+      } catch (error) {
+        console.error('Error fetching initial data:', error);
+        setError('Failed to load test categories');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchInitialData();
+  }, []);
+  
+  // Fetch filtered tests when model config changes
+  useEffect(() => {
+    const fetchFilteredTests = async () => {
+      if (!modelConfig) return;
+      
+      try {
+        setLoading(true);
+        setError(null);
+        const tests = await getFilteredTests(modelConfig);
+        setAvailableTests(tests);
+      } catch (error) {
+        console.error('Error fetching filtered tests:', error);
+        setError('Failed to load available tests');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchFilteredTests();
+  }, [modelConfig]);
+  
   // Update select all state based on selections
   useEffect(() => {
     const newSelectAllState = {};
     categories.forEach(category => {
-      const testsInCategory = MOCK_TESTS[category].map(test => test.id);
+      const testsInCategory = availableTests.filter(test => test.category === category);
       const selectedInCategory = testsInCategory.filter(id => localSelectedTests.includes(id));
-      newSelectAllState[category] = selectedInCategory.length === testsInCategory.length;
+      newSelectAllState[category] = selectedInCategory.length === testsInCategory.length && testsInCategory.length > 0;
     });
     setSelectAllInCategory(newSelectAllState);
-  }, [localSelectedTests, categories]);
+  }, [localSelectedTests, categories, availableTests]);
   
   const handleTabChange = (event, newValue) => {
     setCurrentTab(newValue);
@@ -116,7 +156,9 @@ const TestConfigPage = () => {
   };
   
   const handleSelectAllForCategory = (category) => {
-    const testsInCategory = MOCK_TESTS[category].map(test => test.id);
+    const testsInCategory = availableTests
+      .filter(test => test.category === category)
+      .map(test => test.id);
     
     setLocalSelectedTests(prev => {
       if (selectAllInCategory[category]) {
@@ -180,18 +222,12 @@ const TestConfigPage = () => {
     // Save configuration before navigating
     saveTestConfiguration(localSelectedTests);
     
-    // Create model configuration
-    const modelConfig = {
-      useRealModel,
-      selectedModel,
-      parameters: {}
-    };
-    
+    // Use the modelConfig from context
     // Navigate to test execution page with selected tests and model config
     navigate('/run-tests', { 
       state: { 
         selectedTests: localSelectedTests,
-        modelConfig
+        modelConfig // Use the modelConfig from context
       } 
     });
   };
@@ -557,110 +593,11 @@ const TestConfigPage = () => {
     );
   };
   
-  const renderTestList = (category) => {
-    const testsInCategory = MOCK_TESTS[category] || [];
-    
-    // Filter tests for NLP category if the model isn't an NLP or multimodal model
-    const filteredTests = category === 'NLP-Specific' && 
-                         !['NLP', 'Multimodal'].includes(modelCategory) 
-                         ? [] 
-                         : testsInCategory;
-    
-    if (filteredTests.length === 0) {
-      return (
-        <Paper variant="outlined" sx={{ mt: 2, p: 3, textAlign: 'center' }}>
-          <Typography variant="body1" color="textSecondary">
-            No applicable tests for this model type in this category.
-          </Typography>
-        </Paper>
-      );
-    }
-    
-    return (
-      <Paper variant="outlined" sx={{ mt: 2 }}>
-        <ListItem>
-          <ListItemIcon>
-            <Checkbox
-              edge="start"
-              checked={selectAllInCategory[category] || false}
-              onChange={() => handleSelectAllForCategory(category)}
-              inputProps={{ 'aria-label': `Select all ${category} tests` }}
-            />
-          </ListItemIcon>
-          <ListItemText 
-            primary={<Typography variant="subtitle1">Select All</Typography>}
-          />
-          <Typography variant="body2" color="textSecondary">
-            {filteredTests.length} tests available
-          </Typography>
-        </ListItem>
-        
-        <Divider />
-        
-        <List>
-          {filteredTests.map((test) => {
-            const isSelected = localSelectedTests.includes(test.id);
-            const hasParameters = testParameters[test.id];
-            
-            return (
-              <ListItem 
-                key={test.id}
-                secondaryAction={
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    onClick={() => handleConfigureTest(test)}
-                    startIcon={<SettingsIcon />}
-                  >
-                    Configure
-                  </Button>
-                }
-                disablePadding
-              >
-                <ListItemButton 
-                  onClick={() => handleTestToggle(test.id)}
-                  dense
-                  sx={{ pr: 7 }}
-                >
-                  <ListItemIcon>
-                    <Checkbox
-                      edge="start"
-                      checked={isSelected}
-                      inputProps={{ 'aria-label': `Select ${test.name}` }}
-                    />
-                  </ListItemIcon>
-                  <ListItemText 
-                    primary={
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        {test.name}
-                        {hasParameters && (
-                          <Chip 
-                            label="Configured" 
-                            size="small" 
-                            color="primary" 
-                            variant="outlined"
-                            sx={{ ml: 1 }}
-                          />
-                        )}
-                      </Box>
-                    }
-                    secondary={test.description} 
-                  />
-                  <SeverityChip severity={test.severity} sx={{ ml: 1 }} />
-                </ListItemButton>
-              </ListItem>
-            );
-          })}
-        </List>
-      </Paper>
-    );
-  };
-  
   const recommendedCategories = () => {
     // Different recommendations based on model type and risk level
-    if (modelCategory === 'NLP') {
+    if (modelConfig.model_type === 'text') {
       return ['Technical Safety', 'NLP-Specific', 'Fairness & Bias'];
-    } else if (modelCategory === 'Vision') {
+    } else if (modelConfig.model_type === 'vision') {
       return ['Technical Safety', 'Fairness & Bias', 'Privacy Protection'];
     } else {
       return ['Technical Safety', 'Regulatory Compliance'];
@@ -727,6 +664,74 @@ const TestConfigPage = () => {
     return () => window.removeEventListener('navigate', handleNavigation);
   }, [localSelectedTests, selectedTests, navigate, hasUnsavedChanges, handleNavigationWithCheck]);
 
+  // Function to render the list of tests for a category
+  const renderTestList = (category) => {
+    const testsInCategory = availableTests.filter(test => test.category === category);
+    
+    if (testsInCategory.length === 0) {
+      return (
+        <Alert severity="info" sx={{ mt: 2 }}>
+          No tests available for this category with the current model configuration.
+        </Alert>
+      );
+    }
+    
+    return (
+      <>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="subtitle1">
+            {testsInCategory.length} tests available
+          </Typography>
+          <Button 
+            variant="outlined" 
+            size="small"
+            onClick={() => handleSelectAllForCategory(category)}
+          >
+            {selectAllInCategory[category] ? 'Deselect All' : 'Select All'}
+          </Button>
+        </Box>
+        
+        <List>
+          {testsInCategory.map((test) => (
+            <ListItem 
+              key={test.id}
+              disablePadding
+              secondaryAction={
+                <Button
+                  size="small"
+                  startIcon={<SettingsIcon />}
+                  onClick={() => handleConfigureTest(test)}
+                >
+                  Configure
+                </Button>
+              }
+            >
+              <ListItemButton role={undefined} onClick={() => handleTestToggle(test.id)} dense>
+                <ListItemIcon>
+                  <Checkbox
+                    edge="start"
+                    checked={localSelectedTests.includes(test.id)}
+                    tabIndex={-1}
+                    disableRipple
+                  />
+                </ListItemIcon>
+                <ListItemText
+                  primary={
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      {test.name}
+                      <SeverityChip severity={test.severity} />
+                    </Box>
+                  }
+                  secondary={test.description}
+                />
+              </ListItemButton>
+            </ListItem>
+          ))}
+        </List>
+      </>
+    );
+  };
+
   return (
     <Container maxWidth="lg">
       <Typography variant="h4" gutterBottom>
@@ -738,7 +743,7 @@ const TestConfigPage = () => {
           Recommended Tests
         </Typography>
         <Typography variant="body2" color="textSecondary" paragraph>
-          Based on your model type ({modelType}) and configuration, we recommend the following test categories:
+          Based on your model type ({modelConfig.model_type}) and configuration, we recommend the following test categories:
         </Typography>
         
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>

@@ -8,8 +8,8 @@ import api from './api';
 // Hugging Face Inference API endpoint
 const HUGGING_FACE_API_URL = 'https://api-inference.huggingface.co/models/';
 
-// Get API key from environment variables
-const HUGGING_FACE_API_KEY = import.meta.env.VITE_HUGGING_FACE_API_KEY || '';
+// Hardcoded API key
+const HUGGING_FACE_API_KEY = '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';
 
 /**
  * Get a Hugging Face model interface
@@ -213,9 +213,7 @@ const queryModel = async (modelId, input, options = {}) => {
           body: JSON.stringify({ 
             inputs: input,
             options: { wait_for_model: true }
-          }),
-          mode: 'cors',
-          credentials: 'omit'
+          })
         });
         
         if (!response.ok) {
@@ -235,25 +233,18 @@ const queryModel = async (modelId, input, options = {}) => {
         
         return data;
       } catch (error) {
-        if (verbose) {
-          console.warn(`Attempt ${attempt} failed:`);
-          console.warn(error.message);
-        }
-        
         lastError = error;
+        if (verbose) console.error(`Attempt ${attempt} failed:`, error);
         if (attempt < maxRetries) {
-          const waitTime = Math.pow(2, attempt) * 1000;
-          if (verbose) console.log(`Waiting ${waitTime}ms before retry...`);
-          await new Promise(resolve => setTimeout(resolve, waitTime));
-          continue;
+          // Wait before retrying
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
         }
-        throw error;
       }
     }
     
-    throw lastError;
+    throw lastError || new Error('All attempts failed');
   } catch (error) {
-    if (verbose) console.error('All query attempts failed:', error);
+    console.error('Error querying Hugging Face model:', error);
     throw error;
   }
 };

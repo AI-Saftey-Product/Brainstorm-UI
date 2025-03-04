@@ -11,6 +11,16 @@ import { getHuggingFaceModel } from './huggingFaceService';
  * @returns {Object} - Model adapter with standardized interface
  */
 export const createModelAdapter = async (modelConfig) => {
+  // Log the incoming model config for debugging
+  console.log('Creating model adapter with config:', modelConfig);
+  console.log('Model ID from config:', modelConfig.selectedModel || modelConfig.modelId || 'NOT SET');
+  
+  // Ensure the model has a valid selectedModel
+  if (!modelConfig.selectedModel && modelConfig.modelId) {
+    console.log('Setting missing selectedModel from modelId in adapter creation');
+    modelConfig.selectedModel = modelConfig.modelId;
+  }
+  
   return await createHuggingFaceAdapter(modelConfig);
 };
 
@@ -22,8 +32,15 @@ export const createModelAdapter = async (modelConfig) => {
 const createHuggingFaceAdapter = async (modelConfig) => {
   try {
     // Validate API key
-    if (!import.meta.env.VITE_HUGGING_FACE_API_KEY) {
+    const apiKey = import.meta.env.VITE_HUGGING_FACE_API_KEY;
+    if (!apiKey) {
       throw new Error('Hugging Face API key not found. Please add it to your .env file as VITE_HUGGING_FACE_API_KEY.');
+    }
+
+    // Check for valid model ID
+    const modelId = modelConfig.selectedModel;
+    if (!modelId || modelId === 'None' || modelId === 'undefined') {
+      throw new Error('Missing or invalid Hugging Face model ID. Please ensure a valid model ID is specified in your model configuration.');
     }
 
     // Initialize the Hugging Face model
@@ -43,6 +60,7 @@ const createHuggingFaceAdapter = async (modelConfig) => {
       modelType: 'huggingface',
       modelId: modelConfig.selectedModel,
       source: 'huggingface',
+      apiKey: apiKey, // Store the API key for future use
       
       /**
        * Get a prediction from the Hugging Face model
@@ -92,27 +110,15 @@ const createHuggingFaceAdapter = async (modelConfig) => {
 
 /**
  * Extract confidence score from model response
- * @param {Object|Array|string} result - The model result
- * @returns {number} - Confidence score (0-1)
+ * @param {Object} result - Raw model response
+ * @returns {number} - Confidence score between 0 and 1
  */
 const extractConfidence = (result) => {
-  // Handle different response formats
-  if (Array.isArray(result) && result.length > 0) {
-    // If result is an array of scored responses
-    if (result[0].score !== undefined) {
-      return result[0].score;
+  if (typeof result === 'object') {
+    if (Array.isArray(result)) {
+      return result[0]?.score || 0.5;
     }
-    return 0.8; // Default confidence for array responses
-  } else if (typeof result === 'object') {
-    // If result is an object with score/confidence
-    if (result.score !== undefined) {
-      return result.score;
-    } else if (result.confidence !== undefined) {
-      return result.confidence;
-    }
-    return 0.7; // Default confidence for object responses
+    return result.score || 0.5;
   }
-  
-  // Default confidence
   return 0.5;
 }; 
