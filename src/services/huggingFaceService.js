@@ -9,7 +9,7 @@ import api from './api';
 const HUGGING_FACE_API_URL = 'https://api-inference.huggingface.co/models/';
 
 // Hardcoded API key
-const HUGGING_FACE_API_KEY = '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';
+const HUGGING_FACE_API_KEY = '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';
 
 /**
  * Get a Hugging Face model interface

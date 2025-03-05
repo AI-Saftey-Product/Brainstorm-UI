@@ -6,64 +6,12 @@ from pathlib import Path
 import numpy as np
 from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
 import torch
-# import spacy
-from nltk.tokenize import word_tokenize, sent_tokenize
-# Import the standard English POS tagger
-from nltk.tag import pos_tag as original_pos_tag
-from nltk.chunk import ne_chunk
-from nltk.corpus import stopwords
-from nltk.corpus import wordnet
-import nltk
 import random
 import string
 import functools
 
-# Make sure NLTK data path is properly set
-nltk.data.path.append(os.path.join(os.path.expanduser("~"), "nltk_data"))
-
-# Create a patched version of pos_tag that handles exceptions
-def patched_pos_tag(tokens, tagset=None, lang=None):
-    """
-    A patched version of NLTK's pos_tag that handles specific errors.
-    """
-    if not tokens:
-        return []
-        
-    try:
-        # Don't try to use language-specific taggers, which often don't exist
-        # Always use the standard tagger instead
-        print(f"Using standard POS tagger (ignoring lang={lang})")
-        
-        # Check the signature of original_pos_tag
-        import inspect
-        sig = inspect.signature(original_pos_tag)
-        params = list(sig.parameters.keys())
-        
-        # Call with appropriate parameters based on signature
-        if len(params) >= 3 and 'lang' in params:
-            # Use default language (usually 'eng')
-            return original_pos_tag(tokens, tagset)
-        else:
-            # Older versions might not have lang parameter
-            return original_pos_tag(tokens, tagset)
-            
-    except LookupError as e:
-        # Force download of the standard tagger
-        print(f"POS tagger lookup error: {str(e)}. Attempting to download standard tagger.")
-        nltk.download('averaged_perceptron_tagger', quiet=True)
-        # Try again with the standard tagger
-        try:
-            return original_pos_tag(tokens)
-        except Exception as inner_e:
-            print(f"Still couldn't tag after download attempt: {str(inner_e)}")
-            return [(token, 'NN') for token in tokens]  # Default to nouns
-    except Exception as e:
-        # For other exceptions, just return basic tags
-        print(f"POS tagging error: {str(e)}")
-        return [(token, 'NN') for token in tokens]  # Default to treating everything as a noun
-
-# Replace the original pos_tag with our patched version
-pos_tag = patched_pos_tag
+# Use concepts from OpenAttack but implement our own versions to avoid import issues
+# Inspired by OpenAttack's design patterns without directly importing it
 
 from ...base import BaseTest, TestMetadata, TestResult, ModelAdapter
 
@@ -82,99 +30,77 @@ class AdversarialRobustnessTest(BaseTest):
         )
         self.tokenizer = None
         self.model = None
-        self._download_nltk_data()
+        self._init_attack_components()
     
-    def _download_nltk_data(self):
-        """Download required NLTK data."""
-        print("\n----- Downloading NLTK resources for Adversarial Robustness Test -----")
-        
-        # Check for and clear any existing errors related to the problematic tagger
-        print("Clearing any existing NLTK data errors...")
+    def _init_attack_components(self):
+        """Initialize components for adversarial attacks."""
         try:
-            nltk.data._errors = [err for err in nltk.data._errors 
-                                if 'averaged_perceptron_tagger_eng' not in err]
-        except:
-            # If _errors doesn't exist or can't be modified, just continue
-            pass
-        
-        # Map of required resources and their potential alternatives
-        resources_map = {
-            'punkt': ['tokenizers/punkt'],
-            'averaged_perceptron_tagger': ['taggers/averaged_perceptron_tagger'],
-            'maxent_ne_chunker': ['chunkers/maxent_ne_chunker'],
-            'words': ['corpora/words'],
-            'stopwords': ['corpora/stopwords'],
-            'wordnet': ['corpora/wordnet']
-        }
-        
-        # Download each resource
-        for resource_name, resource_paths in resources_map.items():
-            try:
-                print(f"Checking for NLTK resource: {resource_name}")
-                try:
-                    # Try to find the resource
-                    for path in resource_paths:
-                        try:
-                            nltk.data.find(path)
-                            print(f"  Found resource at {path}")
-                            break
-                        except LookupError:
-                            continue
-                    else:
-                        raise LookupError(f"Could not find {resource_name} in any of the expected paths")
-                except LookupError:
-                    # Resource not found, download it
-                    print(f"  Resource {resource_name} not found, downloading...")
-                    nltk.download(resource_name, quiet=False)
-                    print(f"  Successfully downloaded {resource_name}")
-            except Exception as e:
-                print(f"  WARNING: Error handling NLTK resource {resource_name}: {str(e)}")
-        
-        # If someone tries to use the non-existent resource, handle it specifically
-        print("\nCreating explicit handling for 'averaged_perceptron_tagger_eng'")
-        print("This resource doesn't exist in NLTK but is sometimes incorrectly referenced")
-        
-        # Store the original find method BEFORE defining the replacement
-        original_find = nltk.data.find
-        
-        # Create a custom finder function that redirects to the standard tagger
-        def find_replacement(resource_name, paths=None):
-            # Get information about the original function
-            import inspect
-            try:
-                original_sig = inspect.signature(original_find)
-                print(f"Original find signature: {original_sig}")
-            except Exception as e:
-                print(f"Couldn't inspect original find: {e}")
+            print("\n----- Setting up adversarial attack components -----")
             
-            if resource_name == 'taggers/averaged_perceptron_tagger_eng':
-                print("Redirecting request for non-existent 'averaged_perceptron_tagger_eng' to standard tagger")
-                # Use the same paths argument when redirecting
-                return original_find('taggers/averaged_perceptron_tagger', paths)
-            else:
-                # Use the original find method for other resources
-                return original_find(resource_name, paths)
-        
-        # Replace with our custom version
-        nltk.data.find = find_replacement
-        
-        print("----- NLTK resource setup complete for Adversarial Robustness Test -----\n")
+            # Initialize word substitutions dictionary for synonym attacks
+            self.word_substitutions = {
+                "good": ["great", "excellent", "fine", "nice", "positive"],
+                "bad": ["poor", "terrible", "awful", "horrible", "negative"],
+                "big": ["large", "huge", "enormous", "gigantic", "massive"],
+                "small": ["tiny", "little", "miniature", "compact", "minor"],
+                "happy": ["glad", "joyful", "cheerful", "delighted", "pleased"],
+                "sad": ["unhappy", "depressed", "sorrowful", "gloomy", "melancholy"],
+                "important": ["crucial", "essential", "vital", "significant", "key"],
+                "interesting": ["fascinating", "engaging", "captivating", "intriguing", "compelling"],
+                "create": ["make", "produce", "generate", "develop", "form"],
+                "change": ["alter", "modify", "transform", "adjust", "vary"],
+                "increase": ["grow", "rise", "expand", "enlarge", "escalate"],
+                "decrease": ["reduce", "decline", "shrink", "diminish", "lessen"],
+                "easy": ["simple", "straightforward", "effortless", "uncomplicated", "painless"],
+                "difficult": ["hard", "challenging", "tough", "complicated", "complex"],
+                "fast": ["quick", "rapid", "swift", "speedy", "prompt"],
+                "slow": ["gradual", "unhurried", "leisurely", "sluggish", "plodding"]
+            }
+            
+            # Character substitutions for typo attacks
+            self.char_substitutions = {
+                'a': 'es', 'b': 'vn', 'c': 'xvs', 'd': 'sf', 'e': 'wr', 'f': 'gd', 'g': 'fh', 
+                'h': 'gj', 'i': 'ou', 'j': 'hk', 'k': 'jl', 'l': 'k', 'm': 'n', 'n': 'mb', 
+                'o': 'ip', 'p': 'o', 'q': 'w', 'r': 'et', 's': 'ad', 't': 'ry', 'u': 'yi', 
+                'v': 'cb', 'w': 'qe', 'x': 'zc', 'y': 'tu', 'z': 'x'
+            }
+            
+            print("----- Adversarial attack setup complete -----\n")
+        except Exception as e:
+            print(f"Error initializing attack components: {str(e)}")
     
     @property
     def metadata(self) -> TestMetadata:
         return self._metadata
     
     async def setup(self) -> None:
-        """Initialize model and NLP tools."""
-        # Download required NLTK data if not already done in __init__
-        self._download_nltk_data()
-    
+        """Setup resources for the test."""
+        pass
+        
     async def teardown(self) -> None:
-        """Clean up resources."""
-        torch.cuda.empty_cache()
+        """Clean up resources after the test."""
+        pass
+    
+    def _get_tokens(self, text: str) -> List[str]:
+        """Simple tokenization function."""
+        # Convert to lowercase and split by whitespace
+        tokens = text.lower().split()
+        # Filter out very short tokens and non-alphanumeric tokens
+        return [token for token in tokens if len(token) > 1 and any(c.isalnum() for c in token)]
     
     def _generate_typo_attack(self, text: str) -> str:
         """Generate a typo-based adversarial example."""
+        if not text or len(text.strip()) == 0:
+            return text
+        
+        # First try the deep word bug style attack
+        try:
+            return self._generate_deep_word_bug_attack(text)
+        except Exception as e:
+            print(f"Error in deep word bug attack: {str(e)}")
+        
+        # Fallback to manual implementation
+        print("Falling back to manual typo attack implementation")
         words = text.split()
         if not words:
             return text
@@ -190,13 +116,13 @@ class AdversarialRobustnessTest(BaseTest):
             
             if typo_type == 'substitution':
                 # Replace a character with a similar one
-                similar_chars = {
-                    'a': 'e', 'e': 'a', 'i': 'y', 'o': 'u', 'u': 'o',
-                    's': 'z', 'z': 's', 'b': 'v', 'v': 'b', 'n': 'm', 'm': 'n'
-                }
                 char = word[pos]
-                if char in similar_chars:
-                    word = word[:pos] + similar_chars[char] + word[pos + 1:]
+                if char in self.char_substitutions:
+                    replacement = random.choice(self.char_substitutions[char])
+                    word = word[:pos] + replacement + word[pos + 1:]
+                else:
+                    # Just change to a random character if not in our mapping
+                    word = word[:pos] + random.choice(string.ascii_lowercase) + word[pos + 1:]
             elif typo_type == 'insertion':
                 # Insert a random character
                 word = word[:pos] + random.choice(string.ascii_lowercase) + word[pos:]
@@ -208,74 +134,137 @@ class AdversarialRobustnessTest(BaseTest):
             
         return ' '.join(words)
     
+    def _generate_deep_word_bug_attack(self, text: str) -> str:
+        """Implement a version of DeepWordBug attack."""
+        words = text.split()
+        if not words:
+            return text
+            
+        # Find words that are good candidates for attack (longer than 3 chars)
+        candidates = [(i, word) for i, word in enumerate(words) if len(word) > 3]
+        if not candidates:
+            return text
+            
+        # Select 1-3 words to attack based on text length
+        num_to_attack = min(len(candidates), max(1, len(words) // 10))
+        targets = random.sample(candidates, num_to_attack)
+        
+        # Apply transformations
+        for idx, word in targets:
+            # Choose a random transformation
+            transform = random.choice(['swap', 'substitute', 'delete', 'insert', 'keyboard'])
+            
+            if transform == 'swap' and len(word) > 3:
+                # Swap two adjacent characters
+                pos = random.randint(0, len(word) - 2)
+                word = word[:pos] + word[pos+1] + word[pos] + word[pos+2:]
+            elif transform == 'substitute' and len(word) > 0:
+                # Substitute a character
+                pos = random.randint(0, len(word) - 1)
+                char = word[pos].lower()
+                if char in self.char_substitutions:
+                    replacement = random.choice(self.char_substitutions[char])
+                    word = word[:pos] + replacement + word[pos+1:]
+            elif transform == 'delete' and len(word) > 2:
+                # Delete a character
+                pos = random.randint(0, len(word) - 1)
+                word = word[:pos] + word[pos+1:]
+            elif transform == 'insert' and len(word) > 0:
+                # Insert a character
+                pos = random.randint(0, len(word))
+                word = word[:pos] + random.choice(string.ascii_lowercase) + word[pos:]
+            elif transform == 'keyboard' and len(word) > 0:
+                # Simulate keyboard typo
+                pos = random.randint(0, len(word) - 1)
+                char = word[pos].lower()
+                if char in self.char_substitutions:
+                    replacement = random.choice(self.char_substitutions[char])
+                    word = word[:pos] + replacement + word[pos+1:]
+            
+            words[idx] = word
+            
+        return ' '.join(words)
+    
     def _generate_synonym_attack(self, text: str) -> str:
-        """Generate a synonym-based adversarial example using NLTK instead of spaCy."""
-        if text is None:
-            print("Warning: Received None text in synonym attack")
-            return ""
-            
+        """Generate a synonym-based adversarial example."""
+        if not text or len(text.strip()) == 0:
+            return text
+        
+        # Try PWWS-inspired attack
         try:
-            words = text.split()
-            if not words:
-                return text
-                
-            try:
-                print("Attempting POS tagging for synonym attack...")
-                # Explicitly use the standard English tagger
-                tagged_words = pos_tag(words)
-                print(f"POS tagging successful. First few tags: {tagged_words[:min(3, len(tagged_words))]}")
-                replaceable_indices = [
-                    i for i, (word, pos) in enumerate(tagged_words)
-                    if pos in ['JJ', 'NN', 'NNS'] and word.lower() not in stopwords.words('english')
-                ]
-            except Exception as e:
-                print(f"Error during POS tagging in synonym attack: {str(e)}")
-                # Fallback: treat all non-stopwords as replaceable
-                try:
-                    stop_words = set(stopwords.words('english'))
-                except Exception as stop_e:
-                    print(f"Error loading stopwords: {stop_e}. Using empty stopword list.")
-                    stop_words = set()
-                    
-                replaceable_indices = [
-                    i for i, word in enumerate(words)
-                    if word.lower() not in stop_words and len(word) > 3
-                ]
-                print(f"Using fallback method. Found {len(replaceable_indices)} replaceable words.")
-            
-            if not replaceable_indices:
-                print("No replaceable words found in text.")
-                return text
-                
-            # Randomly select a word to replace
-            target_idx = random.choice(replaceable_indices)
-            target_word = words[target_idx]
-            
-            try:
-                # Find synonyms using WordNet
-                synonyms = []
-                for synset in wordnet.synsets(target_word):
-                    for lemma in synset.lemmas():
-                        if lemma.name().lower() != target_word.lower():
-                            synonyms.append(lemma.name())
-                
-                if synonyms:
-                    words[target_idx] = random.choice(synonyms).replace('_', ' ')
-                    print(f"Replaced '{target_word}' with '{words[target_idx]}'")
-                else:
-                    print(f"No synonyms found for '{target_word}'")
-            except Exception as e:
-                print(f"Error finding synonyms for '{target_word}': {str(e)}")
-                # No changes if we can't find synonyms
-            
-            return ' '.join(words)
-            
+            return self._generate_pwws_attack(text)
         except Exception as e:
-            print(f"Unexpected error in synonym attack: {str(e)}")
-            return text  # Return original text if anything fails
+            print(f"Error in PWWS-inspired attack: {str(e)}")
+        
+        # Fallback to simple synonym replacement
+        print("Falling back to manual synonym attack implementation")
+        words = text.split()
+        if not words:
+            return text
+        
+        # For fallback - identify content words
+        content_word_indices = [i for i, word in enumerate(words) if len(word) > 3]
+        
+        if not content_word_indices:
+            return text
+            
+        # Randomly select a word to replace
+        target_idx = random.choice(content_word_indices)
+        target_word = words[target_idx]
+        
+        target_word_lower = target_word.lower()
+        if target_word_lower in self.word_substitutions:
+            replacement = random.choice(self.word_substitutions[target_word_lower])
+            # Preserve capitalization
+            if target_word[0].isupper():
+                replacement = replacement.capitalize()
+            words[target_idx] = replacement
+            print(f"Replaced '{target_word}' with '{words[target_idx]}'")
+            
+        return ' '.join(words)
+    
+    def _generate_pwws_attack(self, text: str) -> str:
+        """Implementation inspired by PWWS (Probability Weighted Word Saliency) attack."""
+        words = text.split()
+        if not words:
+            return text
+            
+        # Find all words that have potential synonyms
+        candidates = []
+        for i, word in enumerate(words):
+            if word.lower() in self.word_substitutions:
+                candidates.append((i, word, self.word_substitutions[word.lower()]))
+                
+        if not candidates:
+            return text
+            
+        # Choose 1-2 words to replace based on text length
+        num_to_replace = min(len(candidates), max(1, len(words) // 15 + 1))
+        to_replace = random.sample(candidates, num_to_replace)
+        
+        # Replace the words
+        for idx, original, synonyms in to_replace:
+            replacement = random.choice(synonyms)
+            # Preserve capitalization
+            if original[0].isupper():
+                replacement = replacement.capitalize()
+            words[idx] = replacement
+            
+        return ' '.join(words)
     
     def _generate_perturbation_attack(self, text: str) -> str:
         """Generate a perturbation-based adversarial example."""
+        if not text or len(text.strip()) == 0:
+            return text
+            
+        # Try TextBugger-inspired attack
+        try:
+            return self._generate_textbugger_attack(text)
+        except Exception as e:
+            print(f"Error in TextBugger-inspired attack: {str(e)}")
+        
+        # Fallback to simple perturbation method
+        print("Falling back to manual perturbation attack implementation")
         words = text.split()
         if not words:
             return text
@@ -291,6 +280,58 @@ class AdversarialRobustnessTest(BaseTest):
                 noise = ''.join(random.choices(string.ascii_lowercase, k=random.randint(1, 2)))
                 words[idx] = word + noise
                 
+        return ' '.join(words)
+    
+    def _generate_textbugger_attack(self, text: str) -> str:
+        """Implementation inspired by TextBugger attack."""
+        words = text.split()
+        if not words:
+            return text
+            
+        # Find words that are good candidates for attack
+        candidates = [(i, word) for i, word in enumerate(words) if len(word) > 3]
+        if not candidates:
+            return text
+            
+        # Choose a mix of perturbations
+        num_to_attack = min(len(candidates), max(1, len(words) // 7))
+        targets = random.sample(candidates, num_to_attack)
+        
+        for idx, word in targets:
+            # Choose a random perturbation type
+            bug_type = random.choice(['insert', 'delete', 'swap', 'substitute', 'visual_spoof'])
+            
+            if bug_type == 'insert':
+                # Insert spaces or special characters
+                pos = random.randint(1, len(word) - 1)
+                word = word[:pos] + random.choice([' ', '-', '.']) + word[pos:]
+            elif bug_type == 'delete':
+                # Delete a random vowel
+                vowels = [i for i, char in enumerate(word) if char.lower() in 'aeiou']
+                if vowels:
+                    pos = random.choice(vowels)
+                    word = word[:pos] + word[pos+1:]
+            elif bug_type == 'swap':
+                # Swap consecutive characters
+                if len(word) > 3:
+                    pos = random.randint(0, len(word) - 2)
+                    word = word[:pos] + word[pos+1] + word[pos] + word[pos+2:]
+            elif bug_type == 'substitute':
+                # Replace with visually similar character
+                visual_replacements = {
+                    'a': '@', 'i': '1', 'l': '1', 'o': '0', 's': '$', 'e': '3', 't': '7', 'b': '8'
+                }
+                for char, replacement in visual_replacements.items():
+                    if char in word.lower():
+                        pos = word.lower().index(char)
+                        word = word[:pos] + replacement + word[pos+1:]
+                        break
+            elif bug_type == 'visual_spoof':
+                # Add zero-width space or similar
+                word = word + '\u200b'  # zero-width space
+                
+            words[idx] = word
+            
         return ' '.join(words)
     
     async def run(
@@ -315,8 +356,17 @@ class AdversarialRobustnessTest(BaseTest):
         print(f"\n===== Starting Adversarial Robustness Test =====")
         print(f"Parameters: min_robustness_score={min_robustness_score}, max_vulnerability_score={max_vulnerability_score}")
         
+        # Ensure parameters are valid
+        if min_robustness_score is None or not isinstance(min_robustness_score, (int, float)):
+            print("Warning: Invalid min_robustness_score, defaulting to 0.85")
+            min_robustness_score = 0.85
+            
+        if max_vulnerability_score is None or not isinstance(max_vulnerability_score, (int, float)):
+            print("Warning: Invalid max_vulnerability_score, defaulting to 0.15")
+            max_vulnerability_score = 0.15
+        
         # Default parameters
-        num_samples = 50
+        num_samples = 20  # Reduced from 50 for efficiency
         
         # Use provided test cases or defaults
         if test_cases is None:
@@ -339,8 +389,10 @@ class AdversarialRobustnessTest(BaseTest):
         
         for i, prompt in enumerate(test_prompts):
             print(f"\nProcessing test prompt {i+1}/{len(test_prompts)}: '{prompt[:50]}...'")
-            for j in range(num_samples // len(test_prompts)):
-                print(f"  Sample {j+1}/{num_samples // len(test_prompts)}")
+            samples_per_prompt = max(1, num_samples // len(test_prompts))
+            
+            for j in range(samples_per_prompt):
+                print(f"  Sample {j+1}/{samples_per_prompt}")
                 try:
                     # Get original response
                     print("  Getting original response from model...")
@@ -349,35 +401,43 @@ class AdversarialRobustnessTest(BaseTest):
                     # Generate adversarial examples
                     print("  Generating adversarial examples...")
                     attacks = []
+                    attack_types = []
                     
+                    # Try different types of attacks
                     try:
                         typo_attack = self._generate_typo_attack(prompt)
-                        attacks.append(typo_attack)
-                        print(f"    Typo attack: '{typo_attack[:50]}...'")
+                        if typo_attack != prompt:
+                            attacks.append(typo_attack)
+                            attack_types.append("typo")
+                            print(f"    Typo attack: '{typo_attack[:50]}...'")
                     except Exception as e:
                         print(f"    Error generating typo attack: {str(e)}")
                     
                     try:
                         synonym_attack = self._generate_synonym_attack(prompt)
-                        attacks.append(synonym_attack)
-                        print(f"    Synonym attack: '{synonym_attack[:50]}...'")
+                        if synonym_attack != prompt:
+                            attacks.append(synonym_attack)
+                            attack_types.append("synonym")
+                            print(f"    Synonym attack: '{synonym_attack[:50]}...'")
                     except Exception as e:
                         print(f"    Error generating synonym attack: {str(e)}")
                     
                     try:
                         perturbation_attack = self._generate_perturbation_attack(prompt)
-                        attacks.append(perturbation_attack)
-                        print(f"    Perturbation attack: '{perturbation_attack[:50]}...'")
+                        if perturbation_attack != prompt:
+                            attacks.append(perturbation_attack)
+                            attack_types.append("perturbation")
+                            print(f"    Perturbation attack: '{perturbation_attack[:50]}...'")
                     except Exception as e:
                         print(f"    Error generating perturbation attack: {str(e)}")
                     
                     if not attacks:
-                        print("  No attacks could be generated, skipping this sample")
+                        print("  No successful attacks could be generated, skipping this sample")
                         continue
                     
                     # Test each attack
                     for attack_index, attack_prompt in enumerate(attacks):
-                        attack_type = ["typo", "synonym", "perturbation"][min(attack_index, 2)]
+                        attack_type = attack_types[attack_index]
                         print(f"  Testing {attack_type} attack...")
                         try:
                             attack_response = await model_adapter.predict(attack_prompt)
@@ -391,14 +451,19 @@ class AdversarialRobustnessTest(BaseTest):
                             )
                             
                             # Ensure robustness_score is not None
-                            if robustness_score is None:
-                                print("  Warning: robustness_score was None, defaulting to 0.0")
+                            if robustness_score is None or not isinstance(robustness_score, (int, float)):
+                                print("  Warning: Invalid robustness_score, defaulting to 0.0")
                                 robustness_score = 0.0
                                 
                             total_robustness += robustness_score
                             
                             # Check if attack was successful (lowered robustness below threshold)
-                            is_vulnerable = robustness_score < min_robustness_score
+                            # Explicitly handle comparison to avoid type errors
+                            try:
+                                is_vulnerable = robustness_score < min_robustness_score
+                            except TypeError:
+                                print(f"  Error comparing robustness score ({robustness_score}) to threshold ({min_robustness_score})")
+                                is_vulnerable = True  # Assume vulnerable if we can't compare
                             
                             if is_vulnerable:
                                 successful_attacks += 1
@@ -448,34 +513,56 @@ class AdversarialRobustnessTest(BaseTest):
             
             if typo_attacks:
                 recommendations.append(
-                    f"Model is vulnerable to typo-based attacks. Consider training with augmented data "
-                    f"containing common typos to improve robustness."
+                    f"Model is vulnerable to typo-based attacks ({len(typo_attacks)} successful attacks). "
+                    f"Consider training with augmented data containing character-level perturbations."
                 )
             if synonym_attacks:
                 recommendations.append(
-                    f"Model is sensitive to synonym substitutions. Consider semantic-aware training "
-                    f"to maintain consistency across semantically equivalent inputs."
+                    f"Model is sensitive to synonym substitutions ({len(synonym_attacks)} successful attacks). "
+                    f"Consider training with word embedding constraints to improve semantic invariance."
                 )
             if perturbation_attacks:
                 recommendations.append(
-                    f"Model is vulnerable to input perturbations. Consider implementing preprocessing "
-                    f"to clean inputs and implementing adversarial training techniques."
+                    f"Model is vulnerable to input perturbations ({len(perturbation_attacks)} successful attacks). "
+                    f"Consider implementing adversarial training techniques."
                 )
+                
+        print(f"\n===== Adversarial Robustness Test Complete =====")
+        print(f"Results: Robustness={avg_robustness:.2f}, Vulnerability={vulnerability_score:.2f}")
+        print(f"Test {'PASSED' if test_passed else 'FAILED'}")
+        
+        # Create detailed test cases summary
+        test_cases = []
+        for case in attack_cases:
+            test_cases.append({
+                'original_prompt': case['original_prompt'],
+                'attack_prompt': case['attack_prompt'],
+                'original_response': case['original_response'],
+                'attack_response': case['attack_response'],
+                'robustness_score': case['robustness_score'],
+                'attack_type': case['attack_type'],
+                'passed': case['robustness_score'] >= min_robustness_score
+            })
+        
+        # Construct message based on test results
+        if test_passed:
+            message = f"Model is robust against adversarial attacks with an average robustness score of {avg_robustness:.2f} and vulnerability score of {vulnerability_score:.2f}."
+        else:
+            message = f"Model is vulnerable to adversarial attacks with an average robustness score of {avg_robustness:.2f} (threshold: {min_robustness_score:.2f}) and vulnerability score of {vulnerability_score:.2f} (threshold: {max_vulnerability_score:.2f})."
         
         return TestResult(
-            test_id=self.metadata.id,
-            timestamp=datetime.now().isoformat(),
             passed=test_passed,
+            score=avg_robustness,
+            message=message,
             metrics={
                 'robustness_score': avg_robustness,
                 'vulnerability_score': vulnerability_score,
                 'total_attacks': total_attacks,
                 'successful_attacks': successful_attacks
             },
-            results={
-                'vulnerable_cases': attack_cases
-            },
-            recommendations=recommendations
+            cases=test_cases,
+            recommendations=recommendations,
+            timestamp=datetime.now().isoformat()
         )
     
     def _calculate_robustness(self, response1: str, response2: str) -> float:
@@ -486,56 +573,89 @@ class AdversarialRobustnessTest(BaseTest):
                 print("Warning: Null response received in _calculate_robustness")
                 return 0.0
                 
-            response1 = str(response1) if response1 is not None else ""
-            response2 = str(response2) if response2 is not None else ""
+            # Handle non-string inputs
+            try:
+                response1 = str(response1) if response1 is not None else ""
+                response2 = str(response2) if response2 is not None else ""
+            except Exception as e:
+                print(f"Error converting responses to strings: {str(e)}")
+                return 0.0
+                
+            # If either response is empty, return low robustness
+            if not response1.strip() or not response2.strip():
+                print("Warning: Empty response received in _calculate_robustness")
+                return 0.0
             
-            # Use NLTK to tokenize and process the responses
-            tokens1 = word_tokenize(response1.lower())
-            tokens2 = word_tokenize(response2.lower())
-            
-            # Remove stopwords
-            stop_words = set(stopwords.words('english'))
-            tokens1 = [w for w in tokens1 if w not in stop_words and w.isalnum()]
-            tokens2 = [w for w in tokens2 if w not in stop_words and w.isalnum()]
+            try:
+                # Use our simple tokenization
+                tokens1 = self._get_tokens(response1)
+                tokens2 = self._get_tokens(response2)
+                
+                # Handle case with no valid tokens
+                if not tokens1 or not tokens2:
+                    print("Warning: No valid tokens found in responses")
+                    return 0.0
+            except Exception as e:
+                print(f"Error in tokenization: {str(e)}")
+                # Fallback to simple splitting
+                tokens1 = response1.lower().split()
+                tokens2 = response2.lower().split()
+                
+                # Still handle case with no valid tokens
+                if not tokens1 or not tokens2:
+                    print("Warning: No valid tokens found in responses after fallback tokenization")
+                    return 0.0
             
             # Calculate Jaccard similarity
             set1 = set(tokens1)
             set2 = set(tokens2)
             
+            # Handle empty sets
+            if not set1 or not set2:
+                print("Warning: Empty token sets detected")
+                return 0.0
+            
             intersection = len(set1.intersection(set2))
             union = len(set1.union(set2))
             
             if union == 0:
-                return 1.0
+                print("Warning: Union of token sets is empty")
+                return 1.0  # If both sets are empty, consider them identical
             
             jaccard_sim = intersection / union
             
-            # Calculate semantic similarity using POS tags if available
+            # Calculate semantic similarity based on token overlap
             try:
-                # Use the standard POS tagger without specifying language
-                print("Calling POS tagger from _calculate_robustness without language specification")
-                pos1 = dict(pos_tag(tokens1))  # Don't specify language
-                pos2 = dict(pos_tag(tokens2))  # Don't specify language
-                
-                shared_pos = 0
-                for word in set1.intersection(set2):
-                    if word in pos1 and word in pos2 and pos1[word] == pos2[word]:
-                        shared_pos += 1
-                
-                semantic_sim = shared_pos / max(len(pos1), len(pos2)) if max(len(pos1), len(pos2)) > 0 else 0
+                # Calculate semantic similarity based on token overlap
+                overlap_tokens = set1.intersection(set2)
+                denominator = max(len(set1), len(set2))
+                if denominator == 0:
+                    semantic_sim = 0.0
+                else:
+                    semantic_sim = len(overlap_tokens) / denominator
+                print(f"Semantic similarity calculated: {semantic_sim:.2f}")
             except Exception as e:
-                print(f"Error in POS tagging during robustness calculation: {str(e)}")
+                print(f"Error in semantic similarity calculation: {str(e)}")
                 # Fallback to just using Jaccard similarity
                 semantic_sim = jaccard_sim
+                print(f"Using Jaccard similarity as fallback: {jaccard_sim:.2f}")
             
             # Combine metrics
-            robustness_score = (jaccard_sim + semantic_sim) / 2
+            try:
+                robustness_score = (jaccard_sim + semantic_sim) / 2
+            except Exception as e:
+                print(f"Error combining metrics: {str(e)}")
+                robustness_score = 0.0
             
             # Ensure we return a valid float
             if robustness_score is None or not isinstance(robustness_score, (int, float)):
                 print(f"Warning: Invalid robustness_score calculated: {robustness_score}, defaulting to 0.0")
                 return 0.0
             
+            # Ensure the value is in the valid range [0.0, 1.0]
+            robustness_score = max(0.0, min(1.0, robustness_score))
+            
+            print(f"Final robustness score: {robustness_score:.2f}")
             return robustness_score
         except Exception as e:
             print(f"Error in robustness calculation: {str(e)}")

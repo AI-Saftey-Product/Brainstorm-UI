@@ -81,7 +81,23 @@ class TestResults(BaseModel):
 
 async def run_tests(task_id: str, request: TestRequest):
     """Background task to run tests."""
+    print(f"\n----- Starting test run for task_id: {task_id} -----\n")
+    
     try:
+        # Verify task exists in test_results
+        if task_id not in test_results:
+            print(f"WARNING: Task {task_id} not found in test_results, initializing it now")
+            test_results[task_id] = {
+                "status": "running",
+                "progress": 0,
+                "timestamp": int(datetime.now().timestamp()),
+                "results": {},
+                "compliance_scores": {}
+            }
+        else:
+            # Update task status to running
+            test_results[task_id]["status"] = "running"
+            
         # Convert camelCase keys to snake_case for better compatibility
         settings = request.model_settings.copy()
         
@@ -129,65 +145,99 @@ async def run_tests(task_id: str, request: TestRequest):
         print(f"Model ID used: {model.model_id}")
         print("------------------------------------\n")
         
-        # Initialize results storage
-        test_results[task_id] = {
-            "status": "running",
-            "progress": 0,
-            "timestamp": int(datetime.now().timestamp()),
-            "results": {},
-            "compliance_scores": {}
-        }
+        # Initialize results storage if not already done
+        if "results" not in test_results[task_id]:
+            test_results[task_id]["results"] = {}
+        
+        if "compliance_scores" not in test_results[task_id]:
+            test_results[task_id]["compliance_scores"] = {}
         
         total_tests = len(request.test_ids)
         completed_tests = 0
         
         # Run each test
         for test_id in request.test_ids:
-            test = test_registry.get_test(test_id)
-            if not test:
-                raise ValueError(f"Test not found: {test_id}")
+            try:
+                test = test_registry.get_test(test_id)
+                if not test:
+                    print(f"WARNING: Test not found: {test_id}, skipping")
+                    test_results[task_id]["results"][test_id] = {
+                        "test": {"id": test_id, "name": "Unknown Test", "category": "unknown"},
+                        "result": {"passed": False, "score": 0.0, "message": "Test not found"}
+                    }
+                    continue
+                
+                # Get test parameters
+                parameters = request.test_parameters.get(test_id) if request.test_parameters else None
+                
+                # Debug log before running test
+                print(f"\n----- DEBUG: RUNNING TEST {test_id} -----")
+                print(f"Test parameters: {parameters}")
+                print(f"Model ID being used: {model.model_id}")
+                print("--------------------------------------\n")
+                
+                # Download NLTK resources if needed for NLP-specific tests
+                nlp_specific_tests = ["linguistic_variation_test", "truthfulqa_test", 
+                                    "toxicity_test", "hallucination_test", "factcc_test"]
+                if test_id in nlp_specific_tests:
+                    print(f"NLP-specific test {test_id} detected, ensuring NLTK resources are available...")
+                    setup_nltk()
+                
+                # Run test
+                result = await test.run(model, parameters)
+                
+                # Debug log after test completes
+                print(f"\n----- DEBUG: TEST {test_id} COMPLETED -----")
+                print(f"Test passed: {result.passed}")
+                print(f"Test score: {result.score}")
+                print("-----------------------------------------\n")
+                
+                # Store result
+                test_results[task_id]["results"][test_id] = {
+                    "test": test.metadata.dict(),
+                    "result": result.dict()
+                }
+            except Exception as e:
+                print(f"ERROR running test {test_id}: {str(e)}")
+                # Store error result
+                test_results[task_id]["results"][test_id] = {
+                    "test": test.metadata.dict() if test else {"id": test_id, "name": "Unknown Test", "category": "unknown"},
+                    "result": {"passed": False, "score": 0.0, "message": f"Error: {str(e)}"}
+                }
             
-            # Get test parameters
-            parameters = request.test_parameters.get(test_id) if request.test_parameters else None
-            
-            # Debug log before running test
-            print(f"\n----- DEBUG: RUNNING TEST {test_id} -----")
-            print(f"Test parameters: {parameters}")
-            print(f"Model ID being used: {model.model_id}")
-            print("--------------------------------------\n")
-            
-            # Run test
-            result = await test.run(model, parameters)
-            
-            # Debug log after test completes
-            print(f"\n----- DEBUG: TEST {test_id} COMPLETED -----")
-            print(f"Test passed: {result.passed}")
-            print(f"Test score: {result.score}")
-            print("-----------------------------------------\n")
-            
-            # Store result
-            test_results[task_id]["results"][test_id] = {
-                "test": test.metadata.dict(),
-                "result": result.dict()
-            }
-            
-            # Update progress
+            # Update progress even if test fails
             completed_tests += 1
             test_results[task_id]["progress"] = completed_tests / total_tests
             test_results[task_id]["timestamp"] = int(datetime.now().timestamp())
         
         # Calculate compliance scores
-        test_results[task_id]["compliance_scores"] = calculate_compliance_scores(
-            test_results[task_id]["results"]
-        )
+        try:
+            test_results[task_id]["compliance_scores"] = calculate_compliance_scores(
+                test_results[task_id]["results"]
+            )
+        except Exception as e:
+            print(f"ERROR calculating compliance scores: {str(e)}")
+            test_results[task_id]["compliance_scores"] = {}
         
         # Mark as complete
         test_results[task_id]["status"] = "completed"
+        print(f"\n----- Test run {task_id} completed successfully -----\n")
         
     except Exception as e:
-        test_results[task_id]["status"] = "failed"
-        test_results[task_id]["error"] = str(e)
-        raise
+        print(f"\n----- ERROR in run_tests for task {task_id}: {str(e)} -----\n")
+        # Ensure the task exists and mark it as failed
+        if task_id not in test_results:
+            test_results[task_id] = {
+                "status": "failed",
+                "progress": 0,
+                "timestamp": int(datetime.now().timestamp()),
+                "error": str(e),
+                "results": {},
+                "compliance_scores": {}
+            }
+        else:
+            test_results[task_id]["status"] = "failed"
+            test_results[task_id]["error"] = str(e)
 
 def calculate_compliance_scores(results: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, int]]:
     """Calculate compliance scores by category."""
@@ -216,25 +266,56 @@ async def run_test_batch(request: TestRequest, background_tasks: BackgroundTasks
     print(f"Model ID from request (camelCase): {request.model_settings.get('modelId')}")
     print(f"Model ID from request (selectedModel): {request.model_settings.get('selectedModel')}")
     print(f"Model ID from request (snake_case): {request.model_settings.get('model_id')}")
+    print(f"Generated Task ID: {task_id}")
     print("-----------------------------------------\n")
     
-    # Initialize task status
-    test_results[task_id] = {
-        "status": "started",
-        "progress": 0,
-        "timestamp": int(datetime.now().timestamp())
-    }
-    
-    # Add task to background tasks
-    background_tasks.add_task(run_tests, task_id, request)
-    
-    return TestResponse(task_id=task_id, status="started")
+    try:
+        # Initialize task status
+        test_results[task_id] = {
+            "status": "started",
+            "progress": 0,
+            "timestamp": int(datetime.now().timestamp())
+        }
+        
+        # Verify task is properly stored
+        print(f"Verifying task {task_id} is in test_results: {task_id in test_results}")
+        
+        # Add task to background tasks
+        background_tasks.add_task(run_tests, task_id, request)
+        
+        return TestResponse(task_id=task_id, status="started")
+    except Exception as e:
+        print(f"ERROR in run_test_batch: {str(e)}")
+        # Ensure the task is marked as failed if there's an error
+        if task_id not in test_results:
+            test_results[task_id] = {
+                "status": "failed",
+                "progress": 0,
+                "timestamp": int(datetime.now().timestamp()),
+                "error": str(e)
+            }
+        # Re-raise the exception to be handled by FastAPI
+        raise
 
 @app.get("/api/tests/status/{task_id}", response_model=TaskStatus)
 async def get_task_status(task_id: str):
     """Get status of a test run."""
+    print(f"Checking status for task ID: {task_id}")
+    print(f"Available task IDs: {list(test_results.keys())}")
+    
     if task_id not in test_results:
-        raise HTTPException(status_code=404, detail="Task not found")
+        print(f"Task ID {task_id} not found in test_results")
+        
+        # Check for similar task IDs (in case of UUID formatting issues)
+        similar_tasks = [tid for tid in test_results.keys() if task_id in tid or tid in task_id]
+        if similar_tasks:
+            print(f"Found similar task IDs: {similar_tasks}")
+            # Use the first similar task ID
+            task_id = similar_tasks[0]
+            print(f"Using similar task ID: {task_id}")
+        else:
+            # If still not found, raise the exception
+            raise HTTPException(status_code=404, detail="Task not found")
     
     result = test_results[task_id]
     return TaskStatus(
@@ -247,12 +328,41 @@ async def get_task_status(task_id: str):
 @app.get("/api/tests/results/{task_id}", response_model=TestResults)
 async def get_test_results(task_id: str):
     """Get detailed results of a test run."""
+    print(f"Fetching results for task ID: {task_id}")
+    
     if task_id not in test_results:
-        raise HTTPException(status_code=404, detail="Task not found")
+        print(f"Task ID {task_id} not found in test_results when fetching results")
+        
+        # Check for similar task IDs
+        similar_tasks = [tid for tid in test_results.keys() if task_id in tid or tid in task_id]
+        if similar_tasks:
+            print(f"Found similar task IDs: {similar_tasks}")
+            # Use the first similar task ID
+            task_id = similar_tasks[0]
+            print(f"Using similar task ID: {task_id}")
+        else:
+            # If still not found, raise the exception
+            raise HTTPException(status_code=404, detail="Task results not found")
     
     result = test_results[task_id]
-    if result["status"] not in ["completed", "failed"]:
-        raise HTTPException(status_code=400, detail="Test run not completed")
+    
+    # Ensure required fields exist in the result
+    if "results" not in result:
+        print(f"ERROR: 'results' field missing from task {task_id}")
+        result["results"] = {}
+    
+    if "compliance_scores" not in result:
+        print(f"ERROR: 'compliance_scores' field missing from task {task_id}")
+        result["compliance_scores"] = {}
+    
+    # Only return completed results
+    if result.get("status") != "completed":
+        status = result.get("status", "unknown")
+        error = result.get("error", "Task not completed yet")
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Task status is {status}: {error}"
+        )
     
     return TestResults(
         results=result["results"],
