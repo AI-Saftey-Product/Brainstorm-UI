@@ -45,8 +45,7 @@ import SeverityChip from '../components/common/SeverityChip';
 import CategoryChip from '../components/common/CategoryChip';
 import { 
   getFilteredTests, 
-  getTestCategories, 
-  getModelModalities 
+  getTestCategories
 } from '../services/testsService';
 
 const TestConfigPage = () => {
@@ -56,7 +55,8 @@ const TestConfigPage = () => {
     saveTestConfiguration, 
     testParameters, 
     updateTestParameter,
-    modelConfigured
+    modelConfigured,
+    modelConfig: contextModelConfig
   } = useAppContext();
   
   const [currentTab, setCurrentTab] = useState(0);
@@ -72,11 +72,28 @@ const TestConfigPage = () => {
   const [pendingNavigation, setPendingNavigation] = useState(null);
   
   // Get model configuration from context
-  const modelConfig = modelConfigured || {
+  const modelConfig = contextModelConfig || {
     modality: 'text',
     model_type: 'text',
     parameters: {}
   };
+  
+  // Make sure we have the correct properties for the API
+  useEffect(() => {
+    // If we have model config, ensure we have the proper API properties
+    if (modelConfig && typeof modelConfig === 'object') {
+      // Set default values if properties are missing
+      if (!modelConfig.modality && modelConfig.modelCategory) {
+        modelConfig.modality = modelConfig.modelCategory;
+      }
+      
+      if (!modelConfig.model_type && modelConfig.modelType) {
+        modelConfig.model_type = modelConfig.modelType;
+      }
+      
+      console.log('Model config prepared for API:', modelConfig);
+    }
+  }, [modelConfig]);
   
   // Get categories based on available tests
   const [categories, setCategories] = useState([]);
@@ -93,35 +110,102 @@ const TestConfigPage = () => {
     const fetchInitialData = async () => {
       try {
         setLoading(true);
-        const [categoriesData, modalitiesData] = await Promise.all([
-          getTestCategories(),
-          getModelModalities()
-        ]);
-        setCategories(categoriesData);
+        setError(null);
+        
+        // Only load categories, not modalities
+        const categoriesData = await getTestCategories();
+        
+        // Ensure categories is always an array
+        if (Array.isArray(categoriesData)) {
+          console.log('Raw categories from API:', categoriesData);
+          
+          // If we have tests, extract categories from them
+          if (Array.isArray(availableTests) && availableTests.length > 0) {
+            const categoriesFromTests = [...new Set(availableTests.map(test => test.category))];
+            console.log('Categories derived from tests:', categoriesFromTests);
+            
+            // Use categories from tests if available, otherwise use API categories
+            if (categoriesFromTests.length > 0) {
+              setCategories(categoriesFromTests);
+            } else {
+              setCategories(categoriesData);
+            }
+          } else {
+            setCategories(categoriesData);
+          }
+          
+          console.log('Categories loaded:', categoriesData);
+        } else {
+          console.error('Categories API returned non-array data:', categoriesData);
+          // Use default categories if API returns invalid data
+          setCategories(['security', 'bias', 'toxicity', 'hallucination', 'robustness']);
+          setSnackbarMessage('Using default test categories due to API error');
+          setSnackbarOpen(true);
+        }
       } catch (error) {
-        console.error('Error fetching initial data:', error);
-        setError('Failed to load test categories');
+        console.error('Error fetching categories:', error);
+        setError('Failed to load test categories: ' + error.message);
+        // Show error in snackbar
+        setSnackbarMessage('Error loading test categories: ' + error.message);
+        setSnackbarOpen(true);
+        // Use default categories if API call fails
+        setCategories(['security', 'bias', 'toxicity', 'hallucination', 'robustness']);
       } finally {
         setLoading(false);
       }
     };
 
     fetchInitialData();
-  }, []);
+  }, [availableTests]);
   
   // Fetch filtered tests when model config changes
   useEffect(() => {
     const fetchFilteredTests = async () => {
-      if (!modelConfig) return;
+      if (!modelConfig || typeof modelConfig !== 'object') {
+        console.warn('Invalid model configuration:', modelConfig);
+        return;
+      }
       
       try {
         setLoading(true);
         setError(null);
-        const tests = await getFilteredTests(modelConfig);
+        
+        // Ensure proper API parameters are set
+        const apiModelConfig = {
+          modality: modelConfig.modality || modelConfig.modelCategory || 'NLP',
+          model_type: modelConfig.model_type || modelConfig.modelType || 'Text Generation'
+        };
+        
+        console.log('Fetching tests with model config:', apiModelConfig);
+        
+        let tests = await getFilteredTests(apiModelConfig);
+        console.log('Received tests:', tests);
+        
+        // Always ensure tests is an array
+        if (!tests) {
+          tests = [];
+        } else if (!Array.isArray(tests)) {
+          console.error('Non-array tests data received:', tests);
+          tests = [];
+          setError('Received invalid test data format from server');
+          setSnackbarMessage('Error: Received invalid test data from server');
+          setSnackbarOpen(true);
+        }
+        
         setAvailableTests(tests);
+        
+        // If we got tests but they're empty, show a message
+        if (tests.length === 0) {
+          setSnackbarMessage('No tests found for the current model configuration.');
+          setSnackbarOpen(true);
+        }
       } catch (error) {
         console.error('Error fetching filtered tests:', error);
-        setError('Failed to load available tests');
+        setError('Failed to load available tests: ' + error.message);
+        setSnackbarMessage('Error loading tests: ' + error.message);
+        setSnackbarOpen(true);
+        // Initialize with empty array on error
+        setAvailableTests([]);
       } finally {
         setLoading(false);
       }
@@ -132,10 +216,19 @@ const TestConfigPage = () => {
   
   // Update select all state based on selections
   useEffect(() => {
+    // Safety checks
+    if (!Array.isArray(categories) || !Array.isArray(availableTests)) {
+      console.error('Invalid data for selectAll calculation:', { 
+        categories, 
+        availableTests 
+      });
+      return;
+    }
+    
     const newSelectAllState = {};
     categories.forEach(category => {
-      const testsInCategory = availableTests.filter(test => test.category === category);
-      const selectedInCategory = testsInCategory.filter(id => localSelectedTests.includes(id));
+      const testsInCategory = availableTests.filter(test => test && test.category === category);
+      const selectedInCategory = testsInCategory.filter(test => localSelectedTests.includes(test.id));
       newSelectAllState[category] = selectedInCategory.length === testsInCategory.length && testsInCategory.length > 0;
     });
     setSelectAllInCategory(newSelectAllState);
@@ -156,8 +249,14 @@ const TestConfigPage = () => {
   };
   
   const handleSelectAllForCategory = (category) => {
+    // Safety check for availableTests
+    if (!Array.isArray(availableTests)) {
+      console.error('availableTests is not an array in handleSelectAllForCategory:', availableTests);
+      return;
+    }
+    
     const testsInCategory = availableTests
-      .filter(test => test.category === category)
+      .filter(test => test && test.category === category)
       .map(test => test.id);
     
     setLocalSelectedTests(prev => {
@@ -594,13 +693,29 @@ const TestConfigPage = () => {
   };
   
   const recommendedCategories = () => {
+    // Safety check for modelConfig
+    if (!modelConfig || typeof modelConfig !== 'object') {
+      return ['security', 'bias', 'toxicity'];
+    }
+    
+    // If we have available tests, use their categories
+    if (Array.isArray(availableTests) && availableTests.length > 0) {
+      const availableCategories = [...new Set(availableTests.map(test => test.category))];
+      console.log('Available categories for recommendations:', availableCategories);
+      
+      // Return all available categories (limited to 5)
+      return availableCategories.slice(0, 5);
+    }
+    
     // Different recommendations based on model type and risk level
-    if (modelConfig.model_type === 'text') {
-      return ['Technical Safety', 'NLP-Specific', 'Fairness & Bias'];
-    } else if (modelConfig.model_type === 'vision') {
-      return ['Technical Safety', 'Fairness & Bias', 'Privacy Protection'];
+    const modelType = modelConfig.model_type || modelConfig.modelType || '';
+    
+    if (modelType.toLowerCase().includes('text') || modelType.toLowerCase().includes('nlp')) {
+      return ['security', 'bias', 'toxicity', 'hallucination', 'robustness'];
+    } else if (modelType.toLowerCase().includes('vision') || modelType.toLowerCase().includes('image')) {
+      return ['security', 'bias', 'robustness'];
     } else {
-      return ['Technical Safety', 'Regulatory Compliance'];
+      return ['security', 'robustness'];
     }
   };
   
@@ -666,12 +781,44 @@ const TestConfigPage = () => {
 
   // Function to render the list of tests for a category
   const renderTestList = (category) => {
-    const testsInCategory = availableTests.filter(test => test.category === category);
+    // Safety check to ensure availableTests is an array
+    if (!Array.isArray(availableTests)) {
+      console.error('availableTests is not an array:', availableTests);
+      return (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          Error loading tests. Please try refreshing the page.
+        </Alert>
+      );
+    }
+    
+    console.log(`Filtering tests for category "${category}":`, availableTests);
+    
+    // Check for case-insensitive match (the API might return lowercase categories)
+    const testsInCategory = availableTests.filter(test => {
+      if (!test) return false;
+      
+      // Try multiple ways to match the category
+      const testCategory = test.category || '';
+      const matchesExact = testCategory === category;
+      const matchesLowerCase = testCategory.toLowerCase() === category.toLowerCase();
+      
+      console.log(`Test ${test.id} category "${testCategory}" matches "${category}"?`, 
+        matchesExact || matchesLowerCase);
+        
+      return matchesExact || matchesLowerCase;
+    });
+    
+    console.log(`Found ${testsInCategory.length} tests for category "${category}":`, testsInCategory);
     
     if (testsInCategory.length === 0) {
       return (
         <Alert severity="info" sx={{ mt: 2 }}>
           No tests available for this category with the current model configuration.
+          <Box mt={1}>
+            <Typography variant="caption">Available categories in tests: {
+              [...new Set(availableTests.map(t => t.category))].join(', ')
+            }</Typography>
+          </Box>
         </Alert>
       );
     }
@@ -732,6 +879,15 @@ const TestConfigPage = () => {
     );
   };
 
+  // Debug log to check the model configuration
+  useEffect(() => {
+    console.log('Model context values:', { 
+      modelConfigured, 
+      contextModelConfig,
+      modelConfig
+    });
+  }, [modelConfigured, contextModelConfig, modelConfig]);
+
   return (
     <Container maxWidth="lg">
       <Typography variant="h4" gutterBottom>
@@ -743,18 +899,20 @@ const TestConfigPage = () => {
           Recommended Tests
         </Typography>
         <Typography variant="body2" color="textSecondary" paragraph>
-          Based on your model type ({modelConfig.model_type}) and configuration, we recommend the following test categories:
+          Based on your model type ({modelConfig?.model_type || modelConfig?.modelType || 'Unknown'}) and configuration, we recommend the following test categories:
         </Typography>
         
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          {recommendedCategories().map(category => (
+          {Array.isArray(recommendedCategories()) && recommendedCategories().map(category => (
             <Chip 
               key={category}
               label={category}
               onClick={() => {
-                const index = categories.indexOf(category);
-                if (index !== -1) {
-                  setCurrentTab(index);
+                if (Array.isArray(categories)) {
+                  const index = categories.indexOf(category);
+                  if (index !== -1) {
+                    setCurrentTab(index);
+                  }
                 }
               }}
               sx={{ cursor: 'pointer' }}
@@ -771,7 +929,7 @@ const TestConfigPage = () => {
             variant="scrollable"
             scrollButtons="auto"
           >
-            {categories.map((category, index) => (
+            {Array.isArray(categories) && categories.map((category, index) => (
               <Tab 
                 key={category} 
                 label={category} 
