@@ -8,13 +8,24 @@ export const saveModelConfig = (config) => {
     const savedConfigs = getSavedModelConfigs();
     const timestamp = new Date().toISOString();
     
-    // Ensure selectedModel is set if missing but modelId exists
-    if (!config.selectedModel && config.modelId) {
-      config.selectedModel = config.modelId;
-    }
-    
+    // Map new field names to old field names for backward compatibility
     const configWithMeta = {
       ...config,
+      // Add backward compatibility fields
+      modelName: config.name || config.modelName || 'Unnamed Model',
+      modelType: config.sub_type || config.modelType || '',
+      modelCategory: config.modality || config.modelCategory || '',
+      modelId: config.model_id || config.modelId || '',
+      selectedModel: config.model_id || config.modelId || config.selectedModel || '',
+      apiKey: config.api_key || config.apiKey || '',
+      // Add new fields if they don't exist
+      name: config.name || config.modelName || 'Unnamed Model',
+      modality: config.modality || config.modelCategory || 'NLP',
+      sub_type: config.sub_type || config.modelType || '',
+      source: config.source || 'huggingface',
+      model_id: config.model_id || config.modelId || config.selectedModel || '',
+      api_key: config.api_key || config.apiKey || '',
+      // Add metadata
       id: `model_${timestamp}`,
       createdAt: timestamp,
       lastModified: timestamp
@@ -112,19 +123,31 @@ export const updateModelConfig = (modelId, updates) => {
       throw new Error('Model configuration not found');
     }
     
-    // Ensure selectedModel is set if missing but modelId exists in updates
-    if (updates.modelId && !updates.selectedModel) {
-      updates.selectedModel = updates.modelId;
-    }
-    
-    configs[index] = {
+    // Map new field names to old field names for backward compatibility
+    const updatedConfig = {
       ...configs[index],
       ...updates,
+      // Update backward compatibility fields
+      modelName: updates.name || updates.modelName || configs[index].modelName || configs[index].name || 'Unnamed Model',
+      modelType: updates.sub_type || updates.modelType || configs[index].modelType || configs[index].sub_type || '',
+      modelCategory: updates.modality || updates.modelCategory || configs[index].modelCategory || configs[index].modality || '',
+      modelId: updates.model_id || updates.modelId || configs[index].modelId || configs[index].model_id || '',
+      selectedModel: updates.model_id || updates.modelId || updates.selectedModel || configs[index].selectedModel || configs[index].model_id || '',
+      apiKey: updates.api_key || updates.apiKey || configs[index].apiKey || configs[index].api_key || '',
+      // Update new fields
+      name: updates.name || updates.modelName || configs[index].name || configs[index].modelName || 'Unnamed Model',
+      modality: updates.modality || updates.modelCategory || configs[index].modality || configs[index].modelCategory || 'NLP',
+      sub_type: updates.sub_type || updates.modelType || configs[index].sub_type || configs[index].modelType || '',
+      source: updates.source || configs[index].source || 'huggingface',
+      model_id: updates.model_id || updates.modelId || updates.selectedModel || configs[index].model_id || configs[index].modelId || configs[index].selectedModel || '',
+      api_key: updates.api_key || updates.apiKey || configs[index].api_key || configs[index].apiKey || '',
+      // Update metadata
       lastModified: new Date().toISOString()
     };
     
+    configs[index] = updatedConfig;
     localStorage.setItem(SAVED_MODELS_KEY, JSON.stringify(configs));
-    return configs[index];
+    return updatedConfig;
   } catch (error) {
     console.error('Error updating model config:', error);
     throw error;

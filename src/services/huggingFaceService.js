@@ -8,22 +8,20 @@ import api from './api';
 // Hugging Face Inference API endpoint
 const HUGGING_FACE_API_URL = 'https://api-inference.huggingface.co/models/';
 
-// Hardcoded API key
-const HUGGING_FACE_API_KEY = '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';
-
 /**
  * Get a Hugging Face model interface
  * @param {string} modelId - The Hugging Face model ID
+ * @param {string} apiKey - The Hugging Face API key
  * @returns {Promise<Object>} - A model interface object
  */
-export const getHuggingFaceModel = async (modelId) => {
+export const getHuggingFaceModel = async (modelId, apiKey) => {
   try {
-    if (!HUGGING_FACE_API_KEY) {
-      throw new Error('Hugging Face API key not found. Please add it to your .env file as VITE_HUGGING_FACE_API_KEY.');
+    if (!apiKey) {
+      throw new Error('Hugging Face API key not provided');
     }
     
     // Attempt an initial query to verify the model works
-    await queryModel(modelId, 'Hello, world!');
+    await queryModel(modelId, 'Hello, world!', apiKey);
     
     return {
       modelId,
@@ -34,7 +32,7 @@ export const getHuggingFaceModel = async (modelId) => {
        * @returns {Promise<Object|string>} - The model's response
        */
       query: async (input) => {
-        return await queryModel(modelId, input);
+        return await queryModel(modelId, input, apiKey);
       },
       
       /**
@@ -66,17 +64,21 @@ export const getHuggingFaceModel = async (modelId) => {
 export const getHuggingFaceModelAdapter = async (modelConfig, options = {}) => {
   const verbose = options.verbose || false;
   
-  if (!modelConfig.modelId) {
+  if (!modelConfig.model_id) {
     throw new Error('Model ID is required in the configuration');
   }
   
-  const modelId = modelConfig.modelId;
+  if (!modelConfig.api_key) {
+    throw new Error('API key is required in the configuration');
+  }
+  
+  const modelId = modelConfig.model_id;
+  const apiKey = modelConfig.api_key;
   
   if (verbose) {
     console.log('=== Hugging Face Model Initialization ===');
     console.log(`Model ID: ${modelId}`);
-    console.log(`Model Type: ${modelConfig.modelType}`);
-    console.log(`Model Category: ${modelConfig.modelCategory}`);
+    console.log(`Model Type: ${modelConfig.sub_type}`);
     console.log('Starting initialization process...');
   }
   
@@ -88,7 +90,7 @@ export const getHuggingFaceModelAdapter = async (modelConfig, options = {}) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${HUGGING_FACE_API_KEY}`
+        'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({ inputs: "Hello, testing model connectivity" })
     });
@@ -103,9 +105,12 @@ export const getHuggingFaceModelAdapter = async (modelConfig, options = {}) => {
     
     // Create a model adapter that uses the Hugging Face API
     const modelAdapter = {
-      modelType: modelConfig.modelType,
-      modelId,
+      name: modelConfig.name,
+      modality: modelConfig.modality,
+      sub_type: modelConfig.sub_type,
       source: 'huggingface',
+      model_id: modelId,
+      api_key: apiKey,
       verbose,
       
       // Method for generating predictions from the model
@@ -116,12 +121,12 @@ export const getHuggingFaceModelAdapter = async (modelConfig, options = {}) => {
             console.log(`Input: ${input}`);
           }
           
-          const result = await queryModel(modelId, input, { verbose });
+          const result = await queryModel(modelId, input, apiKey, { verbose });
           
           if (verbose) console.log('Processing prediction response...');
           
           // Process and standardize the response format
-          const processedResult = processHuggingFaceResponse(result, modelConfig.modelType);
+          const processedResult = processHuggingFaceResponse(result, modelConfig.sub_type);
           
           if (verbose) {
             console.log('Processed prediction result:');
@@ -146,10 +151,11 @@ export const getHuggingFaceModelAdapter = async (modelConfig, options = {}) => {
        */
       getModelInfo: () => {
         const info = {
-          name: modelId,
-          type: modelConfig.modelType || 'huggingface',
-          category: modelConfig.modelCategory || 'text',
-          parameters: modelConfig.parameters || {}
+          name: modelConfig.name,
+          modality: modelConfig.modality,
+          sub_type: modelConfig.sub_type,
+          source: 'huggingface',
+          model_id: modelId
         };
         if (verbose) {
           console.log('Model Information:');
@@ -184,11 +190,12 @@ export const getHuggingFaceModelAdapter = async (modelConfig, options = {}) => {
  * Query a Hugging Face model
  * @param {string} modelId - The Hugging Face model ID
  * @param {string} input - The input text
+ * @param {string} apiKey - The Hugging Face API key
  * @param {Object} options - Additional options
  * @param {boolean} options.verbose - Enable verbose logging
  * @returns {Promise<Object|string>} - The model's response
  */
-const queryModel = async (modelId, input, options = {}) => {
+const queryModel = async (modelId, input, apiKey, options = {}) => {
   const verbose = options.verbose || false;
   
   try {
@@ -207,7 +214,7 @@ const queryModel = async (modelId, input, options = {}) => {
         const response = await fetch(`${HUGGING_FACE_API_URL}${modelId}`, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${HUGGING_FACE_API_KEY}`,
+            'Authorization': `Bearer ${apiKey}`,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({ 

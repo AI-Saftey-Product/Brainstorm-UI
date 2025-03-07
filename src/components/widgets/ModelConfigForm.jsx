@@ -14,28 +14,18 @@ import {
 } from '@mui/material';
 
 const MODEL_CATEGORIES = {
-  "Multimodal": [
-    "Audio-Text-to-Text", "Image-Text-to-Text", "Visual Question Answering",
-    "Document Question Answering", "Video-Text-to-Text", "Visual Document Retrieval",
-    "Any-to-Any"
-  ],
-  "Vision": [
-    "Computer Vision", "Depth Estimation", "Image Classification", "Object Detection",
-    "Image Segmentation", "Text-to-Image", "Image-to-Text", "Image-to-Image"
-  ],
   "NLP": [
     "Text Classification", "Token Classification", "Table Question Answering",
     "Question Answering", "Zero-Shot Classification", "Translation",
     "Summarization", "Text Generation"
-  ],
-  "Audio": [
-    "Text-to-Speech", "Text-to-Audio", "Automatic Speech Recognition",
-    "Audio-to-Audio", "Audio Classification", "Voice Activity Detection"
-  ],
-  "Tabular": [
-    "Tabular Classification", "Tabular Regression", "Time Series Forecasting"
   ]
 };
+
+// We're only supporting NLP models currently
+const MODEL_SOURCES = [
+  "huggingface",
+  "custom"
+];
 
 const ModelConfigForm = ({ 
   initialValues = {}, 
@@ -43,10 +33,12 @@ const ModelConfigForm = ({
   errors = {} 
 }) => {
   const [formValues, setFormValues] = useState({
-    modelName: initialValues.modelName || 'My AI Model',
-    modelCategory: initialValues.modelCategory || '',
-    modelType: initialValues.modelType || '',
-    modelId: initialValues.modelId || '',
+    name: initialValues.name || 'My AI Model',
+    modality: 'NLP', // Always set to NLP
+    sub_type: initialValues.sub_type || initialValues.modelType || '',
+    source: initialValues.source || 'huggingface',
+    api_key: initialValues.api_key || '',
+    model_id: initialValues.model_id || initialValues.modelId || '',
     verbose: initialValues.verbose || false,
     ...initialValues
   });
@@ -76,14 +68,14 @@ const ModelConfigForm = ({
       'Text Classification': " Try: distilbert-base-uncased-finetuned-sst-2-english, roberta-base-openai-detector",
       'Summarization': " Try: facebook/bart-large-cnn, sshleifer/distilbart-cnn-12-6",
       'Translation': " Try: Helsinki-NLP/opus-mt-en-fr, t5-small",
-      'Question Answering': " Try: distilbert-base-cased-distilled-squad, deepset/roberta-base-squad2",
-      'Image Classification': " Try: google/vit-base-patch16-224, microsoft/resnet-50",
-      'Object Detection': " Try: facebook/detr-resnet-50",
-      'Audio Classification': " Try: superb/hubert-large-superb-er"
+      'Question Answering': " Try: distilbert-base-cased-distilled-squad, deepset/roberta-base-squad2"
     };
     
     return recommendations[modelType] || " Popular options: gpt2, bert-base-uncased, facebook/bart-large-cnn";
   };
+
+  // Show API key field only for HuggingFace models
+  const showApiKey = formValues.source === 'huggingface';
 
   return (
     <Box>
@@ -92,62 +84,88 @@ const ModelConfigForm = ({
           <TextField
             fullWidth
             label="Model Name"
-            value={formValues.modelName}
-            onChange={handleChange('modelName')}
-            error={!!errors.modelName}
-            helperText={errors.modelName}
+            value={formValues.name}
+            onChange={handleChange('name')}
+            error={!!errors.name}
+            helperText={errors.name}
           />
         </Grid>
 
         <Grid item xs={12} md={6}>
-          <FormControl fullWidth error={!!errors.modelCategory}>
-            <InputLabel>Model Category</InputLabel>
+          <FormControl fullWidth disabled>
+            <InputLabel>Modality</InputLabel>
             <Select
-              value={formValues.modelCategory}
-              label="Model Category"
-              onChange={handleChange('modelCategory')}
+              value={formValues.modality}
+              label="Modality"
             >
-              {Object.keys(MODEL_CATEGORIES).map((category) => (
-                <MenuItem key={category} value={category}>
-                  {category}
+              <MenuItem value="NLP">NLP</MenuItem>
+            </Select>
+            <FormHelperText>Currently only supporting NLP models</FormHelperText>
+          </FormControl>
+        </Grid>
+
+        <Grid item xs={12} md={6}>
+          <FormControl fullWidth error={!!errors.source}>
+            <InputLabel>Source</InputLabel>
+            <Select
+              value={formValues.source}
+              label="Source"
+              onChange={handleChange('source')}
+            >
+              {MODEL_SOURCES.map((source) => (
+                <MenuItem key={source} value={source}>
+                  {source.charAt(0).toUpperCase() + source.slice(1)}
                 </MenuItem>
               ))}
             </Select>
-            {errors.modelCategory && (
-              <FormHelperText>{errors.modelCategory}</FormHelperText>
+            {errors.source && (
+              <FormHelperText>{errors.source}</FormHelperText>
             )}
           </FormControl>
         </Grid>
 
         <Grid item xs={12} md={6}>
-          <FormControl fullWidth error={!!errors.modelType}>
+          <FormControl fullWidth error={!!errors.sub_type}>
             <InputLabel>Model Type</InputLabel>
             <Select
-              value={formValues.modelType}
+              value={formValues.sub_type}
               label="Model Type"
-              onChange={handleChange('modelType')}
-              disabled={!formValues.modelCategory}
+              onChange={handleChange('sub_type')}
             >
-              {formValues.modelCategory && MODEL_CATEGORIES[formValues.modelCategory].map((type) => (
+              {MODEL_CATEGORIES["NLP"].map((type) => (
                 <MenuItem key={type} value={type}>
                   {type}
                 </MenuItem>
               ))}
             </Select>
-            {errors.modelType && (
-              <FormHelperText>{errors.modelType}</FormHelperText>
+            {errors.sub_type && (
+              <FormHelperText>{errors.sub_type}</FormHelperText>
             )}
           </FormControl>
         </Grid>
 
+        {showApiKey && (
+          <Grid item xs={12} md={6}>
+            <TextField
+              fullWidth
+              label="API Key"
+              value={formValues.api_key}
+              onChange={handleChange('api_key')}
+              error={!!errors.api_key}
+              helperText={errors.api_key || "Your HuggingFace API key"}
+              type="password"
+            />
+          </Grid>
+        )}
+
         <Grid item xs={12}>
           <TextField
             fullWidth
-            label="Hugging Face Model ID"
-            value={formValues.modelId}
-            onChange={handleChange('modelId')}
-            error={!!errors.modelId}
-            helperText={errors.modelId || (formValues.modelType && getRecommendedModelText(formValues.modelType))}
+            label="Model ID"
+            value={formValues.model_id}
+            onChange={handleChange('model_id')}
+            error={!!errors.model_id}
+            helperText={errors.model_id || (formValues.sub_type && getRecommendedModelText(formValues.sub_type))}
           />
         </Grid>
 

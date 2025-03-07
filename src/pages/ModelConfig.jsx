@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -13,22 +13,56 @@ import {
 } from '@mui/material';
 import ModelConfigForm from '../components/widgets/ModelConfigForm';
 import { useAppContext } from '../context/AppContext';
-import huggingFaceService from '../services/huggingFaceService';
 import { createModelAdapter } from '../services/modelAdapter';
 import { saveModelConfig } from '../services/modelStorageService';
 
 const ModelConfigPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { configureModel, modelConfigured } = useAppContext();
   
-  const [formValues, setFormValues] = useState(modelConfigured || {
-    modelName: '',
-    modelCategory: '',
-    modelType: '',
-    modelId: '',
-    selectedModel: '', // This will store the Hugging Face model ID
+  // Check if we have a config passed in from location state (for editing)
+  const passedConfig = location.state?.config;
+  
+  const [formValues, setFormValues] = useState({
+    name: '',
+    modality: 'NLP',
+    sub_type: '',
+    source: 'huggingface',
+    api_key: '',
+    model_id: '',
     verbose: false
   });
+  
+  // Load config from passedConfig or modelConfigured on mount
+  useEffect(() => {
+    if (passedConfig) {
+      // Normalize the passed config to ensure it has the new field names
+      const normalizedConfig = {
+        name: passedConfig.name || passedConfig.modelName || '',
+        modality: passedConfig.modality || passedConfig.modelCategory || 'NLP',
+        sub_type: passedConfig.sub_type || passedConfig.modelType || '',
+        source: passedConfig.source || 'huggingface',
+        model_id: passedConfig.model_id || passedConfig.modelId || passedConfig.selectedModel || '',
+        api_key: passedConfig.api_key || passedConfig.apiKey || '',
+        verbose: passedConfig.verbose || false
+      };
+      setFormValues(normalizedConfig);
+    } else if (modelConfigured) {
+      // Normalize the existing model config
+      const normalizedConfig = {
+        name: modelConfigured.name || modelConfigured.modelName || '',
+        modality: modelConfigured.modality || modelConfigured.modelCategory || 'NLP',
+        sub_type: modelConfigured.sub_type || modelConfigured.modelType || '',
+        source: modelConfigured.source || 'huggingface',
+        model_id: modelConfigured.model_id || modelConfigured.modelId || modelConfigured.selectedModel || '',
+        api_key: modelConfigured.api_key || modelConfigured.apiKey || '',
+        verbose: modelConfigured.verbose || false
+      };
+      setFormValues(normalizedConfig);
+    }
+  }, [passedConfig, modelConfigured]);
+  
   const [validationErrors, setValidationErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [configSuccess, setConfigSuccess] = useState(false);
@@ -37,10 +71,7 @@ const ModelConfigPage = () => {
   const [modelInitStatus, setModelInitStatus] = useState('');
   
   const handleFormChange = (values) => {
-    setFormValues({
-      ...values,
-      selectedModel: values.modelId // Ensure selectedModel is always synced with modelId
-    });
+    setFormValues(values);
     
     // Clear validation errors for changed fields
     const updatedErrors = { ...validationErrors };
@@ -56,21 +87,22 @@ const ModelConfigPage = () => {
     const errors = {};
     
     // Validate required fields
-    if (!formValues.modelName) {
-      errors.modelName = 'Model name is required';
+    if (!formValues.name) {
+      errors.name = 'Model name is required';
     }
     
-    if (!formValues.modelCategory) {
-      errors.modelCategory = 'Model category is required';
-    }
-    
-    if (!formValues.modelType) {
-      errors.modelType = 'Model type is required';
+    if (!formValues.sub_type) {
+      errors.sub_type = 'Model type is required';
     }
     
     // Validate model ID
-    if (!formValues.modelId) {
-      errors.modelId = 'Model ID is required';
+    if (!formValues.model_id) {
+      errors.model_id = 'Model ID is required';
+    }
+    
+    // Validate API key for HuggingFace models
+    if (formValues.source === 'huggingface' && !formValues.api_key) {
+      errors.api_key = 'API key is required for HuggingFace models';
     }
     
     setValidationErrors(errors);
@@ -87,23 +119,25 @@ const ModelConfigPage = () => {
     setModelInitStatus('');
     
     try {
-      setModelInitStatus('Initializing Hugging Face model...');
+      setModelInitStatus(`Initializing ${formValues.source} model...`);
       
       // Create the model adapter with proper configuration
       const modelAdapter = await createModelAdapter({
-        selectedModel: formValues.modelId,
-        modelType: formValues.modelType,
-        modelCategory: formValues.modelCategory,
+        name: formValues.name,
+        modality: formValues.modality,
+        sub_type: formValues.sub_type,
+        source: formValues.source,
+        api_key: formValues.api_key,
+        model_id: formValues.model_id,
         verbose: formValues.verbose
       });
 
-      setModelInitStatus(`Hugging Face model "${formValues.modelId}" initialized successfully!`);
+      setModelInitStatus(`${formValues.source} model "${formValues.model_id}" initialized successfully!`);
       
       // Gather configuration with the properly initialized adapter
       const modelConfig = {
         ...formValues,
-        modelAdapter,
-        type: formValues.modelType
+        modelAdapter
       };
       
       // Save configuration using context and storage service
@@ -153,20 +187,24 @@ const ModelConfigPage = () => {
                 <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
                   <Box>
                     <Typography variant="body2" color="textSecondary">Name:</Typography>
-                    <Typography variant="body1">{formValues.modelName}</Typography>
+                    <Typography variant="body1">{formValues.name}</Typography>
                   </Box>
                   <Box>
                     <Typography variant="body2" color="textSecondary">Type:</Typography>
-                    <Typography variant="body1">{formValues.modelType}</Typography>
+                    <Typography variant="body1">{formValues.sub_type}</Typography>
                   </Box>
                   <Box>
-                    <Typography variant="body2" color="textSecondary">Category:</Typography>
-                    <Typography variant="body1">{formValues.modelCategory}</Typography>
+                    <Typography variant="body2" color="textSecondary">Modality:</Typography>
+                    <Typography variant="body1">{formValues.modality}</Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="body2" color="textSecondary">Source:</Typography>
+                    <Typography variant="body1">{formValues.source}</Typography>
                   </Box>
                   <Box sx={{ gridColumn: '1 / -1' }}>
-                    <Typography variant="body2" color="textSecondary">Hugging Face Model:</Typography>
+                    <Typography variant="body2" color="textSecondary">Model ID:</Typography>
                     <Typography variant="body1">
-                      {formValues.modelId}
+                      {formValues.model_id}
                     </Typography>
                   </Box>
                 </Box>

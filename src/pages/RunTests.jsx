@@ -35,87 +35,122 @@ import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import { useAppContext } from '../context/AppContext';
-import { TEST_CATEGORIES, MOCK_TESTS } from '../constants/testCategories';
 import StatusChip from '../components/common/StatusChip';
 import SeverityChip from '../components/common/SeverityChip';
 import CategoryChip from '../components/common/CategoryChip.jsx';
 import ComplianceScoreGauge from '../components/common/ComplianceScoreGauge';
 import ProgressBar from '../components/common/ProgressBar';
-import { runTests, getTestStatus, getTestResults } from '../services/testsService';
+import { runTests, getTestResults } from '../services/testsService';
 import { createModelAdapter } from '../services/modelAdapter';
 import { getSavedModelConfigs, getModelConfigById, saveTestResults as saveModelTestResults } from '../services/modelStorageService';
+import { getFilteredTests } from '../services/testsService';
+import websocketService from '../services/websocketService';
+
+// Color mapping for categories
+const CATEGORY_COLORS = {
+  'security': '#e53935', // red
+  'bias': '#7b1fa2', // purple
+  'toxicity': '#d32f2f', // dark red
+  'hallucination': '#1565c0', // blue
+  'robustness': '#2e7d32', // green
+  'ethics': '#6a1b9a', // deep purple
+  'performance': '#0277bd', // light blue
+  'quality': '#00695c', // teal
+  'privacy': '#283593', // indigo
+  'safety': '#c62828', // darker red
+  'compliance': '#4527a0' // deep purple
+};
 
 const RunTestsPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { 
-    selectedTests, 
+    selectedTests: contextSelectedTests, 
     testParameters, 
-    modelAdapter,
-    modelType,
     saveTestResults,
-    configureModel
+    modelType,
+    configureModel,
+    availableTests
   } = useAppContext();
   
-  const [runningTests, setRunningTests] = useState(false);
+  const [logs, setLogs] = useState([]);
+  const [currentTask, setCurrentTask] = useState(null);
+  const [statusCheckInterval, setStatusCheckInterval] = useState(null);
+  const [testStarted, setTestStarted] = useState(false);
+  const [testCompleted, setTestCompleted] = useState(false);
   const [testProgress, setTestProgress] = useState(0);
   const [currentTestName, setCurrentTestName] = useState('');
+  const [expandedRows, setExpandedRows] = useState({});
+  const [savedConfigs, setSavedConfigs] = useState([]);
+  const [selectedConfig, setSelectedConfig] = useState('');
+  const [modelAdapterState, setModelAdapterState] = useState({
+    modelId: '',
+    modelName: 'Default Model',
+    parameters: {}
+  });
+  const logsEndRef = useRef(null);
+  
+  // Use selected tests from context or location state
+  const [selectedTests, setSelectedTests] = useState([]);
   const [testResults, setTestResults] = useState({});
   const [complianceScores, setComplianceScores] = useState({});
+  
+  const [runningTests, setRunningTests] = useState(false);
   const [totalPassed, setTotalPassed] = useState(0);
   const [totalFailed, setTotalFailed] = useState(0);
   const [overallScore, setOverallScore] = useState(0);
   const [testComplete, setTestComplete] = useState(false);
-  const [expandedRows, setExpandedRows] = useState({});
   const [verbose, setVerbose] = useState(false);
-  const [logs, setLogs] = useState([]);
-  const [modelAdapterState, setModelAdapter] = useState(null);
+  const [modelAdapter, setModelAdapter] = useState(null);
   const [modelConfig, setModelConfig] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [savedConfigs, setSavedConfigs] = useState([]);
   const [selectedModelId, setSelectedModelId] = useState('');
-  const [testsToRun, setTestsToRun] = useState([]);
-  
+  const logsContainerRef = useRef(null);
   const logContainerRef = useRef(null);
   
-  // Initialize the tests to run when the component mounts
+  // Initialize test selection when component mounts
   useEffect(() => {
-    // First priority: tests passed via location.state (direct navigation from TestConfig)
+    // Priority: Tests from location state (from TestConfig page)
     // Second priority: tests from context (loaded from localStorage)
     // Default to empty array if neither is available
-    const initialTests = location.state?.selectedTests || selectedTests || [];
-    setTestsToRun(initialTests);
+    const initialTests = location.state?.selectedTests || contextSelectedTests || [];
+    setSelectedTests(initialTests);
     
     // Log the test list
-    if (initialTests.length > 0) {
-      console.log(`Loaded ${initialTests.length} tests to run`);
-    } else {
+    console.log('Selected tests:', initialTests);
+    
+    if (initialTests.length === 0) {
       console.log('No tests loaded. Please configure tests first.');
     }
-  }, [location.state, selectedTests]);
+  }, [location.state, contextSelectedTests]);
   
   // Group tests by category
   const groupTestsByCategory = () => {
+    // Use availableTests from context instead of MOCK_TESTS
     const grouped = {};
     
-    // Using data from MOCK_TESTS to get more info about the tests
-    Object.entries(TEST_CATEGORIES).forEach(([category]) => {
-      const testsInCategory = testsToRun.filter(testId => {
-        // Look through all mockTest categories to find matching tests by ID
-        for (const [cat, tests] of Object.entries(MOCK_TESTS)) {
-          const found = tests.find(t => t.id === testId);
-          if (found && found.category === category) {
-            return true;
-          }
-        }
-        return false;
+    // First, create empty arrays for all categories we have
+    if (Array.isArray(availableTests)) {
+      // Get unique categories
+      const categories = [...new Set(availableTests.map(test => test.category))];
+      categories.forEach(category => {
+        grouped[category] = [];
       });
       
-      if (testsInCategory.length > 0) {
-        grouped[category] = testsInCategory.length;
+      // Group selected tests by category
+      for (const testId of selectedTests) {
+        // Find test in available tests
+        const test = availableTests.find(t => t.id === testId);
+        if (test) {
+          const category = test.category;
+          if (!grouped[category]) {
+            grouped[category] = [];
+          }
+          grouped[category].push(testId);
+        }
       }
-    });
+    }
     
     return grouped;
   };
@@ -149,77 +184,167 @@ const RunTestsPage = () => {
     setSavedConfigs(configs);
   };
   
-  const handleModelSelect = async (event) => {
-    const modelId = event.target.value;
-    setSelectedModelId(modelId);
-    setTestComplete(false); // Reset test results when model changes
-    
-    if (modelId) {
+  // Load model configuration on mount
+  useEffect(() => {
+    const loadModelConfig = async () => {
       try {
-        setLoading(true);
-        setError('');
-        const config = getModelConfigById(modelId);
+        // Try from location state first (from TestConfig navigation)
+        let config = location.state?.modelConfig;
         
         if (!config) {
-          throw new Error('Selected model configuration not found');
+          // If no location state, try to load from localStorage
+          const savedConfigs = await getSavedModelConfigs();
+          setSavedConfigs(savedConfigs);
+          
+          if (savedConfigs.length > 0) {
+            // Default to first saved config
+            setSelectedModelId(savedConfigs[0].id);
+          }
+        } else {
+          // Use the config provided in location state
+          // Normalize config to ensure it has both old and new field names
+          config = {
+            ...config,
+            name: config.name || config.modelName || 'Unnamed Model',
+            modelName: config.name || config.modelName || 'Unnamed Model',
+            
+            modality: config.modality || config.modelCategory || 'NLP',
+            modelCategory: config.modality || config.modelCategory || 'NLP',
+            
+            sub_type: config.sub_type || config.modelType || '',
+            modelType: config.sub_type || config.modelType || '',
+            
+            model_id: config.model_id || config.modelId || config.selectedModel || '',
+            modelId: config.model_id || config.modelId || config.selectedModel || '',
+            selectedModel: config.model_id || config.modelId || config.selectedModel || '',
+            
+            source: config.source || 'huggingface',
+            
+            api_key: config.api_key || config.apiKey || '',
+            apiKey: config.api_key || config.apiKey || ''
+          };
+          
+          setModelConfig(config);
+          
+          if (config.modelAdapter) {
+            setModelAdapter(config.modelAdapter);
+          }
         }
-        
-        console.log('Selected model configuration:', config);
-        
-        // Ensure selectedModel is set - if it's missing, use modelId
-        if (!config.selectedModel && config.modelId) {
-          console.log('Setting missing selectedModel from modelId');
-          config.selectedModel = config.modelId;
-        }
-        
-        // Additional validation
-        if (!config.selectedModel || config.selectedModel === 'None' || config.selectedModel === 'undefined') {
-          throw new Error('Missing or invalid model ID in the selected configuration. Please update your model configuration with a valid Hugging Face model ID.');
-        }
-        
-        // Set the selected model configuration
-        setModelConfig(config);
-        
-        // Initialize model adapter for the selected model
-        console.log('Creating model adapter with ID:', config.selectedModel);
-        const adapter = await createModelAdapter(config);
-        console.log('Model adapter created:', adapter);
-        setModelAdapter(adapter);
-        addLog(`Model adapter created for ${config.modelName} (ID: ${config.selectedModel})`);
-        
+      } catch (err) {
+        console.error('Error loading model configurations:', err);
+        setError('Failed to load model configurations');
+      } finally {
         setLoading(false);
+      }
+    };
+
+    loadModelConfig();
+  }, [location.state]);
+  
+  const handleModelSelect = async (event) => {
+    const modelId = event.target.value;
+    
+    if (modelId) {
+      setSelectedModelId(modelId);
+      setLoading(true);
+      setError(null);
+      
+      try {
+        const config = getModelConfigById(modelId);
+        
+        // Normalize config to ensure it has both old and new field names
+        const normalizedConfig = {
+          ...config,
+          name: config.name || config.modelName || 'Unnamed Model',
+          modelName: config.name || config.modelName || 'Unnamed Model',
+          
+          modality: config.modality || config.modelCategory || 'NLP',
+          modelCategory: config.modality || config.modelCategory || 'NLP',
+          
+          sub_type: config.sub_type || config.modelType || '',
+          modelType: config.sub_type || config.modelType || '',
+          
+          model_id: config.model_id || config.modelId || config.selectedModel || '',
+          modelId: config.model_id || config.modelId || config.selectedModel || '',
+          selectedModel: config.model_id || config.modelId || config.selectedModel || '',
+          
+          source: config.source || 'huggingface',
+          
+          api_key: config.api_key || config.apiKey || '',
+          apiKey: config.api_key || config.apiKey || ''
+        };
+        
+        setModelConfig(normalizedConfig);
+        
+        // Fetch available tests for this model configuration
+        try {
+          const adapter = await createModelAdapter(normalizedConfig);
+          setModelAdapter(adapter);
+          console.log('Model adapter initialized:', adapter);
+          
+          // Get tests compatible with this model (removed fetchTests which is undefined)
+          // Load tests for the model by querying the API directly
+          const apiParams = {
+            modality: normalizedConfig.modality,
+            model_type: normalizedConfig.sub_type
+          };
+          
+          // Use the API directly instead of an undefined function
+          const compatibleTests = await getFilteredTests(apiParams);
+          console.log('Fetched compatible tests:', compatibleTests);
+          
+          // Now filter the selectedTests to only include compatible ones
+          if (Array.isArray(compatibleTests) && selectedTests.length > 0) {
+            const compatibleTestIds = compatibleTests.map(test => test.id);
+            const filteredSelectedTests = selectedTests.filter(testId => 
+              compatibleTestIds.includes(testId)
+            );
+            
+            if (filteredSelectedTests.length !== selectedTests.length) {
+              console.warn(`Some selected tests are not compatible with this model. 
+                Selected: ${selectedTests.length}, Compatible: ${filteredSelectedTests.length}`);
+              setSelectedTests(filteredSelectedTests);
+            }
+          }
+        } catch (adapterError) {
+          console.error('Error initializing model adapter:', adapterError);
+          setError(`Failed to initialize model adapter: ${adapterError.message}`);
+        }
       } catch (error) {
         console.error('Error selecting model:', error);
-        setError(error.message);
+        setError(`Failed to load model configuration: ${error.message}`);
+      } finally {
         setLoading(false);
-        setModelAdapter(null);
-        setModelConfig(null);
       }
     } else {
-      setModelAdapter(null);
       setModelConfig(null);
+      setSelectedTests([]);
+      setSelectedModelId('');
     }
   };
   
   const handleRunTests = async () => {
-    if (!selectedModelId) {
-      setError('Please select a model configuration first');
-      return;
-    }
-
-    if (!testsToRun || testsToRun.length === 0) {
-      setError('No tests selected. Please go back to the Test Configuration page and select tests.');
+    if (!modelAdapter) {
+      setError('No model adapter available. Please select a model configuration.');
       return;
     }
     
-    if (!modelAdapterState) {
-      setError('Model not initialized');
-      return;
-    }
+    // Reset state before starting
+    setRunningTests(true);
+    setTestResults({});
+    setComplianceScores({});
+    setExpandedRows({});
+    setTestProgress(0);
+    setCurrentTestName('Initializing...');
+    setError(null);
+    
+    // Clear log and add header
+    setLogs([]);
+    addLog('Starting test run...');
     
     // Debug logging for model adapter
-    console.log('Model adapter state before running tests:', modelAdapterState);
-    console.log('Model ID from adapter:', modelAdapterState.modelId);
+    console.log('Model adapter state before running tests:', modelAdapter);
+    console.log('Model ID from adapter:', modelAdapter.modelId);
     console.log('Selected model from config:', modelConfig?.selectedModel);
     
     try {
@@ -230,140 +355,155 @@ const RunTestsPage = () => {
       setTestProgress(0);
       setCurrentTestName('Initializing...');
       addLog('Starting test run...');
-      addLog(`Using model: ${modelConfig?.modelName} (ID: ${modelAdapterState.modelId || 'unknown'})`);
+      addLog(`Using model: ${modelConfig?.modelName} (ID: ${modelAdapter.modelId || 'unknown'})`);
       
       // Group tests by category for better organization
       const groupedTests = groupTestsByCategory();
       for (const category in groupedTests) {
-        addLog(`Preparing ${groupedTests[category]} tests for category: ${category}`);
+        addLog(`Preparing ${groupedTests[category].length} tests for category: ${category}`);
       }
       
       const logCallback = (message) => {
         addLog(message);
       };
       
-      // Create a test configuration object that explicitly includes the model ID
+      // Create a test configuration object that explicitly includes all required fields for the API
       const testConfig = {
-        ...modelAdapterState,
-        // Ensure the selectedModel property is set correctly
-        selectedModel: modelAdapterState.modelId,
-        // Include other necessary properties from the model config
-        modelName: modelConfig?.modelName,
-        modelType: modelConfig?.modelType,
-        modelCategory: modelConfig?.modelCategory
+        // Ensure we have all the required fields with the correct names
+        name: modelConfig?.name || modelConfig?.modelName || 'Unnamed Model',
+        modality: modelConfig?.modality || modelConfig?.modelCategory || 'NLP',
+        sub_type: modelConfig?.sub_type || modelConfig?.modelType || '',
+        source: modelConfig?.source || 'huggingface',
+        model_id: modelConfig?.model_id || modelConfig?.modelId || modelConfig?.selectedModel || modelAdapter?.modelId || '',
+        api_key: modelConfig?.api_key || modelConfig?.apiKey || ''
       };
       
       console.log('Test configuration being sent to API:', testConfig);
-      addLog(`Sending test configuration with model ID: ${testConfig.selectedModel}`);
-      
-      // Run the tests with the model adapter - it returns a task_id
-      const taskId = await runTests(
-        testsToRun,
-        testConfig,
-        testParameters || {},
-        verbose ? logCallback : null
-      );
-      
-      addLog(`Test run initiated with task ID: ${taskId}`);
-      
-      // Poll for results
-      let completed = false;
-      let results = {};
-      let scores = {};
+      addLog(`Sending test configuration with model ID: ${testConfig.model_id}`);
       
       try {
-        addLog(`Beginning to poll for test results (task ID: ${taskId})...`);
+        // Run the tests with the properly formatted config
+        const taskId = await runTests(
+          selectedTests,
+          testConfig,
+          testParameters || {},
+          verbose ? logCallback : null
+        );
         
-        while (!completed) {
-          // Wait for 1 second between polls
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
-          try {
-            // Get status
-            const status = await getTestStatus(taskId);
-            setTestProgress(status.progress * 100);
-            setCurrentTestName(status.currentTest || 'Processing...');
-            
-            if (status.status === 'completed') {
-              // Get final results
-              const testResults = await getTestResults(taskId);
-              results = testResults.results || {};
-              scores = testResults.compliance_scores || {};
-              completed = true;
-              addLog('Test execution completed successfully.');
-            } else if (status.status === 'failed') {
-              throw new Error(status.error || 'Test run failed');
-            } else {
-              addLog(`Test status: ${status.status}, progress: ${Math.round(status.progress * 100)}%`);
-            }
-          } catch (statusError) {
-            addLog(`Error checking test status: ${statusError.message}`);
-            throw statusError;
-          }
+        // Validate task ID
+        if (!taskId) {
+          throw new Error('No task ID returned from the API. Test run could not be initiated.');
         }
-      } catch (pollError) {
-        addLog(`Error during test execution: ${pollError.message}`);
-        setError(`Test execution failed: ${pollError.message}`);
-        setRunningTests(false);
-        return;
+        
+        addLog(`Test run initiated with task ID: ${taskId}`);
+        
+        // Setup variables for tracking results
+        let completed = false;
+        let results = {};
+        let scores = {};
+        
+        // Set up WebSocket connection for real-time updates instead of polling
+        addLog(`Setting up WebSocket connection for real-time updates...`);
+        
+        try {
+          // Connect to WebSocket
+          await websocketService.connect(taskId);
+          addLog(`WebSocket connection established - waiting for test results...`);
+          
+          // Set up a promise that will resolve when test completion is received
+          const testCompletionPromise = new Promise((resolve, reject) => {
+            // Handle test status updates
+            websocketService.on('test_status_update', (data) => {
+              // Update progress information
+              if (data.summary && data.summary.progress !== undefined) {
+                setTestProgress(data.summary.progress * 100);
+              }
+              
+              if (data.summary && data.summary.current_test) {
+                setCurrentTestName(data.summary.current_test);
+                addLog(`Running test: ${data.summary.current_test}`);
+              }
+            });
+            
+            // Handle individual test results as they come in
+            websocketService.on('test_result', (data) => {
+              if (data.result && data.result.test_id) {
+                addLog(`Test completed: ${data.result.test_name || data.result.test_id}`);
+              }
+            });
+            
+            // Handle test completion
+            websocketService.on('test_complete', async (data) => {
+              addLog(`All tests completed successfully`);
+              
+              try {
+                // Fetch the complete results
+                const testResults = await getTestResults(taskId);
+                resolve(testResults);
+              } catch (error) {
+                reject(new Error(`Failed to fetch final results: ${error.message}`));
+              }
+            });
+            
+            // Handle test failure
+            websocketService.on('test_failed', (data) => {
+              reject(new Error(data.message || 'Test execution failed'));
+            });
+            
+            // Handle generic WebSocket errors
+            websocketService.on('error', (error) => {
+              reject(new Error(`WebSocket error: ${error.message || 'Unknown error'}`));
+            });
+            
+            // Handle unexpected WebSocket closure
+            websocketService.on('close', (event) => {
+              if (!event.wasClean) {
+                reject(new Error('WebSocket connection closed unexpectedly'));
+              }
+            });
+          });
+          
+          // Wait for test completion
+          const testResults = await testCompletionPromise;
+          
+          // Process the results
+          results = testResults.results || {};
+          scores = testResults.compliance_scores || {};
+          completed = true;
+          
+          // Update UI and log
+          setTestProgress(100);
+          setCurrentTestName('Completed');
+          addLog('Test execution completed successfully.');
+          
+          // Save and process results
+          setTestResults(results);
+          setComplianceScores(scores);
+          
+          // Handle empty results case
+          if (Object.keys(results).length === 0) {
+            addLog('Warning: No test results returned. The tests may have failed silently.');
+            setError('No test results were returned. Please check test configuration and try again.');
+          } else {
+            // Process results for different categories
+            processTestResults(results, scores);
+          }
+        } catch (error) {
+          addLog(`Error during test execution: ${error.message}`);
+          setError(`Test execution failed: ${error.message}`);
+          websocketService.disconnect();
+        }
+      } catch (error) {
+        console.error('Error running tests:', error);
+        setError(`Error running tests: ${error.message}`);
+        addLog(`Error: ${error.message}`);
       }
-      
-      // Update states with results
-      setTestResults(results);
-      setComplianceScores(scores);
-      
-      // Calculate overall results
-      const totalTests = Object.values(scores).reduce((sum, score) => sum + score.total, 0);
-      const passedTests = Object.values(scores).reduce((sum, score) => sum + score.passed, 0);
-      setTotalPassed(passedTests);
-      setTotalFailed(totalTests - passedTests);
-      const overallScoreValue = totalTests > 0 ? (passedTests / totalTests) * 100 : 0;
-      setOverallScore(overallScoreValue);
-      addLog(`Overall results: ${passedTests}/${totalTests} tests passed (${overallScoreValue.toFixed(1)}%)`);
-      
-      // Set progress to 100% when done
-      setTestProgress(100);
-      setCurrentTestName('Completed');
-      setTestComplete(true);
-      
-      // Save results to context
-      saveTestResults(results, scores);
-      
-      // Save results to model storage service using the selected model ID
-      saveModelTestResults(selectedModelId, {
-        results: Object.entries(results).reduce((acc, [testId, testData]) => {
-          acc[testId] = {
-            test: testData.test,
-            result: {
-              ...testData.result,
-              cases: testData.result.cases || [],
-              questions: testData.result.questions || [],
-              pairs: testData.result.pairs || [],
-              details: {
-                ...testData.result.details,
-                failed_inputs: testData.result.details?.failed_inputs || []
-              },
-              metrics: testData.result.metrics || {},
-              recommendations: testData.result.recommendations || [],
-              timestamp: testData.result.timestamp || new Date().toISOString()
-            }
-          };
-          return acc;
-        }, {}),
-        overallScore: overallScoreValue,
-        totalTests,
-        passedTests,
-        timestamp: new Date().toISOString(),
-        categoryScores: scores
-      });
-      
-      addLog(`Test results saved for model: ${modelConfig?.modelName}`);
-      
     } catch (error) {
-      console.error('Error running tests:', error);
-      setError(`Error running tests: ${error.message}`);
-      addLog(`Error: ${error.message}`);
+      console.error('Error in test execution:', error);
+      setError(`Error: ${error.message}`);
     } finally {
+      // Ensure WebSocket is disconnected and running state is reset
+      websocketService.disconnect();
       setRunningTests(false);
     }
   };
@@ -399,11 +539,28 @@ const RunTestsPage = () => {
               {expandedRows[item.test.id] ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
             </IconButton>
           </TableCell>
-          <TableCell component="th" scope="row">
+          <TableCell
+            align="center"
+            width="40%"
+            sx={{
+              borderBottom: 'none',
+              borderLeft: `4px solid ${
+                CATEGORY_COLORS[item.test.category?.toLowerCase()] || '#757575'
+              }`,
+            }}
+          >
             {item.test.name}
           </TableCell>
-          <TableCell>
-            <CategoryChip category={item.test.category} />
+          <TableCell align="center" width="15%" sx={{ borderBottom: 'none' }}>
+            <Chip
+              label={item.test.category}
+              size="small"
+              sx={{
+                bgcolor: CATEGORY_COLORS[item.test.category?.toLowerCase()] || '#757575',
+                color: 'white',
+                fontWeight: 500,
+              }}
+            />
           </TableCell>
           <TableCell>
             <SeverityChip severity={item.test.severity} />
@@ -494,6 +651,60 @@ const RunTestsPage = () => {
     navigate('/test-config');
   };
   
+  /**
+   * Process test results once they're complete
+   * @param {Object} results - The test results
+   * @param {Object} scores - The compliance scores
+   */
+  const processTestResults = (results, scores) => {
+    // Calculate overall results
+    const totalTests = Object.values(scores).reduce((sum, score) => sum + score.total, 0);
+    const passedTests = Object.values(scores).reduce((sum, score) => sum + score.passed, 0);
+    setTotalPassed(passedTests);
+    setTotalFailed(totalTests - passedTests);
+    const overallScoreValue = totalTests > 0 ? (passedTests / totalTests) * 100 : 0;
+    setOverallScore(overallScoreValue);
+    addLog(`Overall results: ${passedTests}/${totalTests} tests passed (${overallScoreValue.toFixed(1)}%)`);
+    
+    // Set progress to 100% when done
+    setTestProgress(100);
+    setCurrentTestName('Completed');
+    setTestComplete(true);
+    
+    // Save results to context
+    saveTestResults(results, scores);
+    
+    // Save results to model storage service using the selected model ID
+    saveModelTestResults(selectedModelId, {
+      results: Object.entries(results).reduce((acc, [testId, testData]) => {
+        acc[testId] = {
+          test: testData.test,
+          result: {
+            ...testData.result,
+            cases: testData.result.cases || [],
+            questions: testData.result.questions || [],
+            pairs: testData.result.pairs || [],
+            details: {
+              ...testData.result.details,
+              failed_inputs: testData.result.details?.failed_inputs || []
+            },
+            metrics: testData.result.metrics || {},
+            recommendations: testData.result.recommendations || [],
+            timestamp: testData.result.timestamp || new Date().toISOString()
+          }
+        };
+        return acc;
+      }, {}),
+      overallScore: overallScoreValue,
+      totalTests,
+      passedTests,
+      timestamp: new Date().toISOString(),
+      categoryScores: scores
+    });
+    
+    addLog(`Test results saved for model: ${modelConfig?.modelName}`);
+  };
+  
   return (
     <Container maxWidth="lg">
       <Box sx={{ mt: 4, mb: 6 }}>
@@ -532,7 +743,7 @@ const RunTestsPage = () => {
                   </MenuItem>
                   {savedConfigs.map((config) => (
                     <MenuItem key={config.id} value={config.id}>
-                      {config.modelName} ({config.modelType})
+                      {config.name || config.modelName} ({config.sub_type || config.modelType})
                     </MenuItem>
                   ))}
                 </Select>
@@ -550,7 +761,7 @@ const RunTestsPage = () => {
                 </Alert>
               )}
               
-              {testsToRun.length === 0 && (
+              {selectedTests.length === 0 && (
                 <Alert severity="warning" sx={{ mb: 3 }}>
                   No tests selected. Please configure tests first.
                   <Button
@@ -574,15 +785,15 @@ const RunTestsPage = () => {
                   {loading ? <CircularProgress size={24} /> : 'Configure Tests'}
                 </Button>
                 
-                {testsToRun.length > 0 && (
+                {selectedTests.length > 0 && (
                   <Button
                     variant="contained"
                     color="secondary"
                     onClick={handleRunTests}
-                    disabled={!selectedModelId || !testsToRun.length || loading || runningTests}
+                    disabled={!selectedModelId || !selectedTests.length || loading || runningTests}
                     startIcon={<PlayArrowIcon />}
                   >
-                    Run {testsToRun.length} Test{testsToRun.length !== 1 ? 's' : ''}
+                    Run {selectedTests.length} Test{selectedTests.length !== 1 ? 's' : ''}
                   </Button>
                 )}
               </Box>
@@ -623,7 +834,7 @@ const RunTestsPage = () => {
                               width: 10, 
                               height: 10, 
                               borderRadius: '50%', 
-                              bgcolor: TEST_CATEGORIES[category] || '#757575',
+                              bgcolor: CATEGORY_COLORS[category.toLowerCase()] || '#757575',
                               mr: 1 
                             }} 
                           />
@@ -790,7 +1001,7 @@ const RunTestsPage = () => {
                                     width: 12, 
                                     height: 12, 
                                     borderRadius: '50%', 
-                                    bgcolor: TEST_CATEGORIES[category] || '#757575',
+                                    bgcolor: CATEGORY_COLORS[category.toLowerCase()] || '#757575',
                                     mr: 1 
                                   }} 
                                 />
@@ -838,9 +1049,13 @@ const RunTestsPage = () => {
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {Object.values(testResults).map((item) => (
-                          <TestResultRow key={item.test.id} item={item} />
-                        ))}
+                        {Object.values(testResults || {}).map((item) => {
+                          if (!item || !item.test) {
+                            console.warn('Invalid test result item:', item);
+                            return null;
+                          }
+                          return <TestResultRow key={item.test.id} item={item} />;
+                        })}
                       </TableBody>
                     </Table>
                   </TableContainer>

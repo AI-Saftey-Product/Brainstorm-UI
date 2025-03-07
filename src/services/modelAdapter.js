@@ -13,15 +13,37 @@ import { getHuggingFaceModel } from './huggingFaceService';
 export const createModelAdapter = async (modelConfig) => {
   // Log the incoming model config for debugging
   console.log('Creating model adapter with config:', modelConfig);
-  console.log('Model ID from config:', modelConfig.selectedModel || modelConfig.modelId || 'NOT SET');
   
-  // Ensure the model has a valid selectedModel
-  if (!modelConfig.selectedModel && modelConfig.modelId) {
-    console.log('Setting missing selectedModel from modelId in adapter creation');
-    modelConfig.selectedModel = modelConfig.modelId;
+  // Validate required fields for the API
+  if (!modelConfig.name) {
+    throw new Error('Model name is required');
   }
   
-  return await createHuggingFaceAdapter(modelConfig);
+  if (!modelConfig.modality) {
+    throw new Error('Model modality is required');
+  }
+  
+  if (!modelConfig.sub_type) {
+    throw new Error('Model sub_type is required');
+  }
+  
+  if (!modelConfig.source) {
+    throw new Error('Model source is required');
+  }
+  
+  if (!modelConfig.model_id) {
+    throw new Error('Model ID is required');
+  }
+  
+  // Create the appropriate adapter based on source
+  switch (modelConfig.source.toLowerCase()) {
+    case 'huggingface':
+      return await createHuggingFaceAdapter(modelConfig);
+    case 'custom':
+      return await createCustomAdapter(modelConfig);
+    default:
+      throw new Error(`Unsupported model source: ${modelConfig.source}`);
+  }
 };
 
 /**
@@ -31,21 +53,20 @@ export const createModelAdapter = async (modelConfig) => {
  */
 const createHuggingFaceAdapter = async (modelConfig) => {
   try {
-    // Validate API key
-    const apiKey = import.meta.env.VITE_HUGGING_FACE_API_KEY;
-    if (!apiKey) {
-      throw new Error('Hugging Face API key not found. Please add it to your .env file as VITE_HUGGING_FACE_API_KEY.');
+    // Validate HuggingFace specific required fields
+    if (!modelConfig.api_key) {
+      throw new Error('API key is required for HuggingFace models');
     }
 
     // Check for valid model ID
-    const modelId = modelConfig.selectedModel;
+    const modelId = modelConfig.model_id;
     if (!modelId || modelId === 'None' || modelId === 'undefined') {
-      throw new Error('Missing or invalid Hugging Face model ID. Please ensure a valid model ID is specified in your model configuration.');
+      throw new Error('Missing or invalid Hugging Face model ID');
     }
 
     // Initialize the Hugging Face model
-    console.log(`Initializing Hugging Face model with ID: ${modelConfig.selectedModel}`);
-    const model = await getHuggingFaceModel(modelConfig.selectedModel);
+    console.log(`Initializing Hugging Face model with ID: ${modelId}`);
+    const model = await getHuggingFaceModel(modelId, modelConfig.api_key);
     
     // Test the model with a simple query
     try {
@@ -57,10 +78,12 @@ const createHuggingFaceAdapter = async (modelConfig) => {
     }
     
     return {
-      modelType: 'huggingface',
-      modelId: modelConfig.selectedModel,
+      name: modelConfig.name,
+      modality: modelConfig.modality,
+      sub_type: modelConfig.sub_type,
       source: 'huggingface',
-      apiKey: apiKey, // Store the API key for future use
+      model_id: modelId,
+      api_key: modelConfig.api_key,
       
       /**
        * Get a prediction from the Hugging Face model
@@ -96,9 +119,11 @@ const createHuggingFaceAdapter = async (modelConfig) => {
        */
       getModelInfo: () => {
         return {
-          name: modelConfig.selectedModel,
-          type: 'huggingface',
-          parameters: modelConfig.parameters || {}
+          name: modelConfig.name,
+          modality: modelConfig.modality,
+          sub_type: modelConfig.sub_type,
+          source: 'huggingface',
+          model_id: modelId
         };
       }
     };
@@ -106,6 +131,36 @@ const createHuggingFaceAdapter = async (modelConfig) => {
     console.error('Error creating Hugging Face adapter:', error);
     throw error;
   }
+};
+
+/**
+ * Creates an adapter for custom models
+ * @param {Object} modelConfig - Configuration for the custom model
+ * @returns {Object} - Model adapter with standardized interface
+ */
+const createCustomAdapter = async (modelConfig) => {
+  // This is a placeholder for custom model integration
+  return {
+    name: modelConfig.name,
+    modality: modelConfig.modality,
+    sub_type: modelConfig.sub_type,
+    source: 'custom',
+    model_id: modelConfig.model_id,
+    
+    getPrediction: async (input) => {
+      throw new Error('Custom model integration is not yet implemented');
+    },
+    
+    getModelInfo: () => {
+      return {
+        name: modelConfig.name,
+        modality: modelConfig.modality,
+        sub_type: modelConfig.sub_type,
+        source: 'custom',
+        model_id: modelConfig.model_id
+      };
+    }
+  };
 };
 
 /**

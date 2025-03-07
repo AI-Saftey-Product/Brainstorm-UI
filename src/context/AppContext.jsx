@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { MOCK_TESTS } from '../constants/testCategories';
+import { getFilteredTests } from '../services/testsService';
 
 const AppContext = createContext();
 
@@ -18,6 +18,7 @@ export const AppProvider = ({ children }) => {
   const [testParameters, setTestParameters] = useState({});
   const [testResults, setTestResults] = useState({});
   const [complianceScores, setComplianceScores] = useState({});
+  const [availableTests, setAvailableTests] = useState([]);
 
   // Attempt to load state from localStorage on initial load
   useEffect(() => {
@@ -25,11 +26,37 @@ export const AppProvider = ({ children }) => {
       const savedModel = localStorage.getItem('modelConfig');
       if (savedModel) {
         const parsedModel = JSON.parse(savedModel);
+        
+        // Set the model as configured
         setModelConfigured(true);
-        setModelConfig(parsedModel);
-        setModelType(parsedModel.modelType || '');
-        setModelCategory(parsedModel.modelCategory || '');
-        setModelAdapter(parsedModel.modelAdapter);
+        
+        // Map old field names to new field names if needed
+        const normalizedConfig = {
+          ...parsedModel,
+          // Ensure both old and new field names are available
+          name: parsedModel.name || parsedModel.modelName || 'Unnamed Model',
+          modelName: parsedModel.name || parsedModel.modelName || 'Unnamed Model',
+          
+          modality: parsedModel.modality || parsedModel.modelCategory || 'NLP',
+          modelCategory: parsedModel.modality || parsedModel.modelCategory || 'NLP',
+          
+          sub_type: parsedModel.sub_type || parsedModel.modelType || '',
+          modelType: parsedModel.sub_type || parsedModel.modelType || '',
+          
+          model_id: parsedModel.model_id || parsedModel.modelId || parsedModel.selectedModel || '',
+          modelId: parsedModel.model_id || parsedModel.modelId || parsedModel.selectedModel || '',
+          selectedModel: parsedModel.model_id || parsedModel.modelId || parsedModel.selectedModel || '',
+          
+          source: parsedModel.source || 'huggingface',
+          
+          api_key: parsedModel.api_key || parsedModel.apiKey || '',
+          apiKey: parsedModel.api_key || parsedModel.apiKey || ''
+        };
+        
+        setModelConfig(normalizedConfig);
+        setModelType(normalizedConfig.modelType || normalizedConfig.sub_type || '');
+        setModelCategory(normalizedConfig.modelCategory || normalizedConfig.modality || '');
+        setModelAdapter(normalizedConfig.modelAdapter);
       }
 
       const savedTests = localStorage.getItem('selectedTests');
@@ -55,6 +82,34 @@ export const AppProvider = ({ children }) => {
       console.error('Error loading state from localStorage:', error);
     }
   }, []);
+
+  // Remove automatic test fetching on model change
+  // Instead provide a function that can be called explicitly
+  const fetchTestsForModel = async (modelConfig) => {
+    if (!modelConfig) return [];
+    
+    try {
+      console.log('Explicitly fetching tests for model:', modelConfig);
+      
+      // Create API-compatible parameters
+      const apiParams = {
+        modality: modelConfig.modality || modelConfig.modelCategory || 'NLP',
+        model_type: modelConfig.sub_type || modelConfig.modelType || ''
+      };
+      
+      console.log('Sending API params for getFilteredTests:', apiParams);
+      
+      // Fetch tests based on model configuration
+      const tests = await getFilteredTests(apiParams);
+      console.log('Fetched available tests:', tests);
+      setAvailableTests(tests);
+      return tests;
+    } catch (error) {
+      console.error('Error fetching available tests:', error);
+      setAvailableTests([]);
+      return [];
+    }
+  };
 
   // Configure model
   const configureModel = (config) => {
@@ -129,7 +184,7 @@ export const AppProvider = ({ children }) => {
   };
 
   // For simulation/demo purposes, provide the mock test data
-  const MOCK_TESTS_DATA = MOCK_TESTS;
+  // const MOCK_TESTS_DATA = MOCK_TESTS;
 
   return (
     <AppContext.Provider
@@ -147,15 +202,14 @@ export const AppProvider = ({ children }) => {
         testParameters,
         testResults,
         complianceScores,
+        availableTests,
         
         // Functions
         saveTestConfiguration,
         updateTestParameter,
         saveTestResults,
         resetAll,
-        
-        // Mock data for demo
-        MOCK_TESTS: MOCK_TESTS_DATA
+        fetchTestsForModel,
       }}
     >
       {children}

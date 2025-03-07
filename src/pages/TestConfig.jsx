@@ -40,13 +40,9 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import HighlightOffIcon from '@mui/icons-material/HighlightOff';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import { useAppContext } from '../context/AppContext';
-import { MOCK_TESTS, TEST_CATEGORIES } from '../constants/testCategories';
 import SeverityChip from '../components/common/SeverityChip';
 import CategoryChip from '../components/common/CategoryChip';
-import { 
-  getFilteredTests, 
-  getTestCategories
-} from '../services/testsService';
+import { getSavedModelConfigs } from '../services/modelStorageService';
 
 const TestConfigPage = () => {
   const navigate = useNavigate();
@@ -55,8 +51,8 @@ const TestConfigPage = () => {
     saveTestConfiguration, 
     testParameters, 
     updateTestParameter,
-    modelConfigured,
-    modelConfig: contextModelConfig
+    availableTests,
+    fetchTestsForModel
   } = useAppContext();
   
   const [currentTab, setCurrentTab] = useState(0);
@@ -65,170 +61,102 @@ const TestConfigPage = () => {
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
   const [currentTestForConfig, setCurrentTestForConfig] = useState(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState(null);
-  
-  // Get model configuration from context
-  const modelConfig = contextModelConfig || {
-    modality: 'text',
-    model_type: 'text',
-    parameters: {}
-  };
-  
-  // Make sure we have the correct properties for the API
-  useEffect(() => {
-    // If we have model config, ensure we have the proper API properties
-    if (modelConfig && typeof modelConfig === 'object') {
-      // Set default values if properties are missing
-      if (!modelConfig.modality && modelConfig.modelCategory) {
-        modelConfig.modality = modelConfig.modelCategory;
-      }
-      
-      if (!modelConfig.model_type && modelConfig.modelType) {
-        modelConfig.model_type = modelConfig.modelType;
-      }
-      
-      console.log('Model config prepared for API:', modelConfig);
-    }
-  }, [modelConfig]);
-  
-  // Get categories based on available tests
   const [categories, setCategories] = useState([]);
-  const [availableTests, setAvailableTests] = useState([]);
   const [error, setError] = useState(null);
+  
+  // Model selection related state
+  const [savedModels, setSavedModels] = useState([]);
+  const [selectedModelId, setSelectedModelId] = useState('');
+  const [selectedModelConfig, setSelectedModelConfig] = useState(null);
+  const [loadingTests, setLoadingTests] = useState(false);
   
   // Initialize local state from context
   useEffect(() => {
     setLocalSelectedTests(selectedTests || []);
+    
+    // Load saved models
+    const configs = getSavedModelConfigs();
+    if (configs && configs.length > 0) {
+      setSavedModels(configs);
+    } else {
+      // No saved models, redirect to model config page
+      setError('No saved models found. Please configure a model first.');
+    }
   }, [selectedTests]);
   
-  // Fetch categories and modalities on component mount
+  // Fetch categories from available tests
   useEffect(() => {
-    const fetchInitialData = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        
-        // Only load categories, not modalities
-        const categoriesData = await getTestCategories();
-        
-        // Ensure categories is always an array
-        if (Array.isArray(categoriesData)) {
-          console.log('Raw categories from API:', categoriesData);
-          
-          // If we have tests, extract categories from them
-          if (Array.isArray(availableTests) && availableTests.length > 0) {
-            const categoriesFromTests = [...new Set(availableTests.map(test => test.category))];
-            console.log('Categories derived from tests:', categoriesFromTests);
-            
-            // Use categories from tests if available, otherwise use API categories
-            if (categoriesFromTests.length > 0) {
-              setCategories(categoriesFromTests);
-            } else {
-              setCategories(categoriesData);
-            }
-          } else {
-            setCategories(categoriesData);
-          }
-          
-          console.log('Categories loaded:', categoriesData);
-        } else {
-          console.error('Categories API returned non-array data:', categoriesData);
-          // Use default categories if API returns invalid data
-          setCategories(['security', 'bias', 'toxicity', 'hallucination', 'robustness']);
-          setSnackbarMessage('Using default test categories due to API error');
-          setSnackbarOpen(true);
-        }
-      } catch (error) {
-        console.error('Error fetching categories:', error);
-        setError('Failed to load test categories: ' + error.message);
-        // Show error in snackbar
-        setSnackbarMessage('Error loading test categories: ' + error.message);
-        setSnackbarOpen(true);
-        // Use default categories if API call fails
-        setCategories(['security', 'bias', 'toxicity', 'hallucination', 'robustness']);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchInitialData();
+    // Extract unique categories from available tests
+    if (Array.isArray(availableTests) && availableTests.length > 0) {
+      const uniqueCategories = [...new Set(availableTests.map(test => test.category))];
+      setCategories(uniqueCategories);
+    }
   }, [availableTests]);
   
-  // Fetch filtered tests when model config changes
-  useEffect(() => {
-    const fetchFilteredTests = async () => {
-      if (!modelConfig || typeof modelConfig !== 'object') {
-        console.warn('Invalid model configuration:', modelConfig);
-        return;
-      }
+  // Handle model selection
+  const handleModelSelect = async (event) => {
+    const modelId = event.target.value;
+    setSelectedModelId(modelId);
+    
+    if (!modelId) {
+      setSelectedModelConfig(null);
+      return;
+    }
+    
+    setLoadingTests(true);
+    
+    // Find the selected model config
+    const modelConfig = savedModels.find(m => m.id === modelId);
+    if (modelConfig) {
+      setSelectedModelConfig(modelConfig);
+      
+      // Normalize config to ensure it has both old and new field names
+      const normalizedConfig = {
+        ...modelConfig,
+        name: modelConfig.name || modelConfig.modelName || 'Unnamed Model',
+        modelName: modelConfig.name || modelConfig.modelName || 'Unnamed Model',
+        
+        modality: modelConfig.modality || modelConfig.modelCategory || 'NLP',
+        modelCategory: modelConfig.modality || modelConfig.modelCategory || 'NLP',
+        
+        sub_type: modelConfig.sub_type || modelConfig.modelType || '',
+        modelType: modelConfig.sub_type || modelConfig.modelType || '',
+        
+        model_id: modelConfig.model_id || modelConfig.modelId || modelConfig.selectedModel || '',
+        modelId: modelConfig.model_id || modelConfig.modelId || modelConfig.selectedModel || '',
+        selectedModel: modelConfig.model_id || modelConfig.modelId || modelConfig.selectedModel || '',
+      };
       
       try {
-        setLoading(true);
-        setError(null);
-        
-        // Ensure proper API parameters are set
-        const apiModelConfig = {
-          modality: modelConfig.modality || modelConfig.modelCategory || 'NLP',
-          model_type: modelConfig.model_type || modelConfig.modelType || 'Text Generation'
-        };
-        
-        console.log('Fetching tests with model config:', apiModelConfig);
-        
-        let tests = await getFilteredTests(apiModelConfig);
-        console.log('Received tests:', tests);
-        
-        // Always ensure tests is an array
-        if (!tests) {
-          tests = [];
-        } else if (!Array.isArray(tests)) {
-          console.error('Non-array tests data received:', tests);
-          tests = [];
-          setError('Received invalid test data format from server');
-          setSnackbarMessage('Error: Received invalid test data from server');
-          setSnackbarOpen(true);
-        }
-        
-        setAvailableTests(tests);
-        
-        // If we got tests but they're empty, show a message
-        if (tests.length === 0) {
-          setSnackbarMessage('No tests found for the current model configuration.');
-          setSnackbarOpen(true);
-        }
+        // Now fetch tests based on the selected model
+        await fetchTestsForModel(normalizedConfig);
       } catch (error) {
-        console.error('Error fetching filtered tests:', error);
-        setError('Failed to load available tests: ' + error.message);
-        setSnackbarMessage('Error loading tests: ' + error.message);
-        setSnackbarOpen(true);
-        // Initialize with empty array on error
-        setAvailableTests([]);
+        console.error('Error fetching tests for model:', error);
+        setError(`Failed to load tests for selected model: ${error.message}`);
       } finally {
-        setLoading(false);
+        setLoadingTests(false);
       }
-    };
-
-    fetchFilteredTests();
-  }, [modelConfig]);
+    }
+  };
   
   // Update select all state based on selections
   useEffect(() => {
-    // Safety checks
     if (!Array.isArray(categories) || !Array.isArray(availableTests)) {
-      console.error('Invalid data for selectAll calculation:', { 
-        categories, 
-        availableTests 
-      });
       return;
     }
     
     const newSelectAllState = {};
     categories.forEach(category => {
-      const testsInCategory = availableTests.filter(test => test && test.category === category);
-      const selectedInCategory = testsInCategory.filter(test => localSelectedTests.includes(test.id));
+      const testsInCategory = availableTests
+        .filter(test => test.category === category)
+        .map(test => test.id);
+      
+      const selectedInCategory = testsInCategory.filter(id => localSelectedTests.includes(id));
       newSelectAllState[category] = selectedInCategory.length === testsInCategory.length && testsInCategory.length > 0;
     });
     setSelectAllInCategory(newSelectAllState);
@@ -249,14 +177,13 @@ const TestConfigPage = () => {
   };
   
   const handleSelectAllForCategory = (category) => {
-    // Safety check for availableTests
     if (!Array.isArray(availableTests)) {
-      console.error('availableTests is not an array in handleSelectAllForCategory:', availableTests);
+      console.error('availableTests is not an array in handleSelectAllForCategory');
       return;
     }
     
     const testsInCategory = availableTests
-      .filter(test => test && test.category === category)
+      .filter(test => test.category === category)
       .map(test => test.id);
     
     setLocalSelectedTests(prev => {
@@ -318,15 +245,21 @@ const TestConfigPage = () => {
       return;
     }
     
+    // Make sure a model is selected
+    if (!selectedModelConfig) {
+      setSnackbarMessage('Please select a model before running tests');
+      setSnackbarOpen(true);
+      return;
+    }
+    
     // Save configuration before navigating
     saveTestConfiguration(localSelectedTests);
     
-    // Use the modelConfig from context
     // Navigate to test execution page with selected tests and model config
     navigate('/run-tests', { 
       state: { 
         selectedTests: localSelectedTests,
-        modelConfig // Use the modelConfig from context
+        modelConfig: selectedModelConfig
       } 
     });
   };
@@ -692,30 +625,126 @@ const TestConfigPage = () => {
     );
   };
   
+  const renderTestList = (category) => {
+    // Safety check to ensure availableTests is an array
+    if (!Array.isArray(availableTests)) {
+      console.error('availableTests is not an array:', availableTests);
+      return (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          Error loading tests. Please try refreshing the page.
+        </Alert>
+      );
+    }
+    
+    // Filter tests for this category
+    const testsInCategory = availableTests.filter(test => 
+      test && test.category === category
+    );
+    
+    // Filter tests for compatibility with model type if needed
+    const filteredTests = category === 'NLP-Specific' && 
+                         !['NLP', 'Multimodal'].includes(selectedModelConfig?.modelCategory) 
+                         ? [] 
+                         : testsInCategory;
+    
+    if (filteredTests.length === 0) {
+      return (
+        <Paper variant="outlined" sx={{ mt: 2, p: 3, textAlign: 'center' }}>
+          <Typography variant="body1" color="textSecondary">
+            No applicable tests for this model type in this category.
+          </Typography>
+        </Paper>
+      );
+    }
+    
+    return (
+      <Paper variant="outlined" sx={{ mt: 2 }}>
+        <ListItem>
+          <ListItemIcon>
+            <Checkbox
+              edge="start"
+              checked={selectAllInCategory[category] || false}
+              onChange={() => handleSelectAllForCategory(category)}
+              inputProps={{ 'aria-label': `Select all ${category} tests` }}
+            />
+          </ListItemIcon>
+          <ListItemText 
+            primary={<Typography variant="subtitle1">Select All</Typography>}
+          />
+          <Typography variant="body2" color="textSecondary">
+            {filteredTests.length} tests available
+          </Typography>
+        </ListItem>
+        
+        <Divider />
+        
+        <List>
+          {filteredTests.map((test) => {
+            const isSelected = localSelectedTests.includes(test.id);
+            const hasParameters = testParameters[test.id];
+            
+            return (
+              <ListItem 
+                key={test.id}
+                secondaryAction={
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => handleConfigureTest(test)}
+                    startIcon={<SettingsIcon />}
+                  >
+                    Configure
+                  </Button>
+                }
+                disablePadding
+              >
+                <ListItemButton 
+                  onClick={() => handleTestToggle(test.id)}
+                  dense
+                  sx={{ pr: 7 }}
+                >
+                  <ListItemIcon>
+                    <Checkbox
+                      edge="start"
+                      checked={isSelected}
+                      inputProps={{ 'aria-label': `Select ${test.name}` }}
+                    />
+                  </ListItemIcon>
+                  <ListItemText 
+                    primary={
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        {test.name}
+                        {hasParameters && (
+                          <Chip 
+                            label="Configured" 
+                            size="small" 
+                            color="primary" 
+                            variant="outlined"
+                            sx={{ ml: 1 }}
+                          />
+                        )}
+                      </Box>
+                    }
+                    secondary={test.description} 
+                  />
+                  <SeverityChip severity={test.severity} sx={{ ml: 1 }} />
+                </ListItemButton>
+              </ListItem>
+            );
+          })}
+        </List>
+      </Paper>
+    );
+  };
+  
   const recommendedCategories = () => {
-    // Safety check for modelConfig
-    if (!modelConfig || typeof modelConfig !== 'object') {
-      return ['security', 'bias', 'toxicity'];
-    }
-    
-    // If we have available tests, use their categories
-    if (Array.isArray(availableTests) && availableTests.length > 0) {
-      const availableCategories = [...new Set(availableTests.map(test => test.category))];
-      console.log('Available categories for recommendations:', availableCategories);
-      
-      // Return all available categories (limited to 5)
-      return availableCategories.slice(0, 5);
-    }
-    
     // Different recommendations based on model type and risk level
-    const modelType = modelConfig.model_type || modelConfig.modelType || '';
-    
-    if (modelType.toLowerCase().includes('text') || modelType.toLowerCase().includes('nlp')) {
-      return ['security', 'bias', 'toxicity', 'hallucination', 'robustness'];
-    } else if (modelType.toLowerCase().includes('vision') || modelType.toLowerCase().includes('image')) {
-      return ['security', 'bias', 'robustness'];
+    if (selectedModelConfig?.modelCategory === 'NLP') {
+      return ['Technical Safety', 'NLP-Specific', 'Fairness & Bias'];
+    } else if (selectedModelConfig?.modelCategory === 'Vision') {
+      return ['Technical Safety', 'Fairness & Bias', 'Privacy Protection'];
     } else {
-      return ['security', 'robustness'];
+      return ['Technical Safety', 'Regulatory Compliance'];
     }
   };
   
@@ -763,7 +792,7 @@ const TestConfigPage = () => {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [localSelectedTests, selectedTests]);
 
-  // Listen for navigation attempts
+  // Add event listener for window navigation events
   useEffect(() => {
     const handleNavigation = (event) => {
       if (hasUnsavedChanges()) {
@@ -779,179 +808,129 @@ const TestConfigPage = () => {
     return () => window.removeEventListener('navigate', handleNavigation);
   }, [localSelectedTests, selectedTests, navigate, hasUnsavedChanges, handleNavigationWithCheck]);
 
-  // Function to render the list of tests for a category
-  const renderTestList = (category) => {
-    // Safety check to ensure availableTests is an array
-    if (!Array.isArray(availableTests)) {
-      console.error('availableTests is not an array:', availableTests);
-      return (
-        <Alert severity="error" sx={{ mt: 2 }}>
-          Error loading tests. Please try refreshing the page.
-        </Alert>
-      );
-    }
-    
-    console.log(`Filtering tests for category "${category}":`, availableTests);
-    
-    // Check for case-insensitive match (the API might return lowercase categories)
-    const testsInCategory = availableTests.filter(test => {
-      if (!test) return false;
-      
-      // Try multiple ways to match the category
-      const testCategory = test.category || '';
-      const matchesExact = testCategory === category;
-      const matchesLowerCase = testCategory.toLowerCase() === category.toLowerCase();
-      
-      console.log(`Test ${test.id} category "${testCategory}" matches "${category}"?`, 
-        matchesExact || matchesLowerCase);
-        
-      return matchesExact || matchesLowerCase;
-    });
-    
-    console.log(`Found ${testsInCategory.length} tests for category "${category}":`, testsInCategory);
-    
-    if (testsInCategory.length === 0) {
-      return (
-        <Alert severity="info" sx={{ mt: 2 }}>
-          No tests available for this category with the current model configuration.
-          <Box mt={1}>
-            <Typography variant="caption">Available categories in tests: {
-              [...new Set(availableTests.map(t => t.category))].join(', ')
-            }</Typography>
-          </Box>
-        </Alert>
-      );
-    }
-    
-    return (
-      <>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="subtitle1">
-            {testsInCategory.length} tests available
-          </Typography>
-          <Button 
-            variant="outlined" 
-            size="small"
-            onClick={() => handleSelectAllForCategory(category)}
-          >
-            {selectAllInCategory[category] ? 'Deselect All' : 'Select All'}
-          </Button>
-        </Box>
-        
-        <List>
-          {testsInCategory.map((test) => (
-            <ListItem 
-              key={test.id}
-              disablePadding
-              secondaryAction={
-                <Button
-                  size="small"
-                  startIcon={<SettingsIcon />}
-                  onClick={() => handleConfigureTest(test)}
-                >
-                  Configure
-                </Button>
-              }
-            >
-              <ListItemButton role={undefined} onClick={() => handleTestToggle(test.id)} dense>
-                <ListItemIcon>
-                  <Checkbox
-                    edge="start"
-                    checked={localSelectedTests.includes(test.id)}
-                    tabIndex={-1}
-                    disableRipple
-                  />
-                </ListItemIcon>
-                <ListItemText
-                  primary={
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      {test.name}
-                      <SeverityChip severity={test.severity} />
-                    </Box>
-                  }
-                  secondary={test.description}
-                />
-              </ListItemButton>
-            </ListItem>
-          ))}
-        </List>
-      </>
-    );
-  };
-
-  // Debug log to check the model configuration
-  useEffect(() => {
-    console.log('Model context values:', { 
-      modelConfigured, 
-      contextModelConfig,
-      modelConfig
-    });
-  }, [modelConfigured, contextModelConfig, modelConfig]);
-
   return (
     <Container maxWidth="lg">
       <Typography variant="h4" gutterBottom>
         Test Configuration
       </Typography>
-      
+
+      {error && (
+        <Alert 
+          severity="error" 
+          sx={{ mb: 3 }}
+          action={
+            <Button 
+              color="inherit" 
+              size="small"
+              onClick={() => navigate('/model-config')}
+            >
+              Configure Model
+            </Button>
+          }
+        >
+          {error}
+        </Alert>
+      )}
+
+      {/* Model Selection Section */}
       <Paper sx={{ p: 3, mb: 3 }}>
         <Typography variant="h6" gutterBottom>
-          Recommended Tests
+          Select Model
         </Typography>
         <Typography variant="body2" color="textSecondary" paragraph>
-          Based on your model type ({modelConfig?.model_type || modelConfig?.modelType || 'Unknown'}) and configuration, we recommend the following test categories:
+          Choose the model you want to test from your saved configurations. Available tests will be filtered based on this selection.
         </Typography>
-        
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          {Array.isArray(recommendedCategories()) && recommendedCategories().map(category => (
-            <Chip 
-              key={category}
-              label={category}
-              onClick={() => {
-                if (Array.isArray(categories)) {
-                  const index = categories.indexOf(category);
-                  if (index !== -1) {
-                    setCurrentTab(index);
-                  }
-                }
-              }}
-              sx={{ cursor: 'pointer' }}
-            />
-          ))}
-        </Box>
-      </Paper>
-      
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
-          <Tabs 
-            value={currentTab} 
-            onChange={handleTabChange}
-            variant="scrollable"
-            scrollButtons="auto"
+
+        <FormControl fullWidth sx={{ mb: 2 }}>
+          <InputLabel id="model-select-label">Model</InputLabel>
+          <Select
+            labelId="model-select-label"
+            id="model-select"
+            value={selectedModelId}
+            label="Model"
+            onChange={handleModelSelect}
+            disabled={loadingTests}
           >
-            {Array.isArray(categories) && categories.map((category, index) => (
-              <Tab 
-                key={category} 
-                label={category} 
-                id={`test-tab-${index}`}
-                aria-controls={`test-tabpanel-${index}`}
-              />
+            <MenuItem value="">
+              <em>Select a model</em>
+            </MenuItem>
+            {savedModels.map((model) => (
+              <MenuItem key={model.id} value={model.id}>
+                {model.name || model.modelName} ({model.sub_type || model.modelType})
+              </MenuItem>
             ))}
-          </Tabs>
-        </Box>
-        
-        {categories.map((category, index) => (
-          <Box
-            key={category}
-            role="tabpanel"
-            hidden={currentTab !== index}
-            id={`test-tabpanel-${index}`}
-            aria-labelledby={`test-tab-${index}`}
-          >
-            {currentTab === index && renderTestList(category)}
+          </Select>
+        </FormControl>
+
+        {loadingTests && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
+            <CircularProgress size={24} />
+            <Typography variant="body2" color="textSecondary" sx={{ ml: 2 }}>
+              Loading compatible tests...
+            </Typography>
           </Box>
-        ))}
+        )}
+
+        {selectedModelConfig && (
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="subtitle1">Selected Model: {selectedModelConfig.name || selectedModelConfig.modelName}</Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+              <Chip 
+                label={`Type: ${selectedModelConfig.sub_type || selectedModelConfig.modelType}`} 
+                size="small" 
+                color="primary" 
+                variant="outlined" 
+              />
+              <Chip 
+                label={`Modality: ${selectedModelConfig.modality || selectedModelConfig.modelCategory}`} 
+                size="small" 
+                color="secondary" 
+                variant="outlined" 
+              />
+              <Chip 
+                label={`ID: ${selectedModelConfig.model_id || selectedModelConfig.modelId || selectedModelConfig.selectedModel}`} 
+                size="small" 
+                variant="outlined" 
+              />
+            </Box>
+          </Box>
+        )}
       </Paper>
+
+      {/* Only show test selection if a model is selected */}
+      {selectedModelConfig && (
+        <Paper sx={{ p: 3, mb: 3 }}>
+          <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+            <Tabs 
+              value={currentTab} 
+              onChange={handleTabChange}
+              variant="scrollable"
+              scrollButtons="auto"
+            >
+              {categories.map((category, index) => (
+                <Tab 
+                  key={category} 
+                  label={category} 
+                  id={`test-tab-${index}`}
+                  aria-controls={`test-tabpanel-${index}`}
+                />
+              ))}
+            </Tabs>
+          </Box>
+          
+          {categories.map((category, index) => (
+            <Box
+              key={category}
+              role="tabpanel"
+              hidden={currentTab !== index}
+              id={`test-tabpanel-${index}`}
+              aria-labelledby={`test-tab-${index}`}
+            >
+              {currentTab === index && renderTestList(category)}
+            </Box>
+          ))}
+        </Paper>
+      )}
       
       <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography>

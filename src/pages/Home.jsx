@@ -41,8 +41,29 @@ const HomePage = () => {
     const configs = getSavedModelConfigs();
     const configsWithResults = configs.map(config => {
       const testResults = getModelTestResults(config.id);
+      
+      // Normalize config to ensure it has both old and new field names
       return {
         ...config,
+        // Ensure both old and new field names are available
+        name: config.name || config.modelName || 'Unnamed Model',
+        modelName: config.name || config.modelName || 'Unnamed Model',
+        
+        modality: config.modality || config.modelCategory || 'NLP',
+        modelCategory: config.modality || config.modelCategory || 'NLP',
+        
+        sub_type: config.sub_type || config.modelType || '',
+        modelType: config.sub_type || config.modelType || '',
+        
+        model_id: config.model_id || config.modelId || config.selectedModel || '',
+        modelId: config.model_id || config.modelId || config.selectedModel || '',
+        selectedModel: config.model_id || config.modelId || config.selectedModel || '',
+        
+        source: config.source || 'huggingface',
+        
+        api_key: config.api_key || config.apiKey || '',
+        apiKey: config.api_key || config.apiKey || '',
+        
         testResults,
         lastTestRun: testResults.length > 0 ? 
           testResults[testResults.length - 1].timestamp : null
@@ -66,6 +87,7 @@ const HomePage = () => {
   };
 
   const handleEditConfig = (config) => {
+    // Make sure we're passing the normalized config with both old and new field names
     navigate('/model-config', { state: { config } });
   };
 
@@ -186,20 +208,57 @@ const HomePage = () => {
                 }}
                 onClick={() => navigate(`/model/${config.id}`)}
               >
+                <Box 
+                  sx={{ 
+                    position: 'absolute', 
+                    top: 8, 
+                    right: 8, 
+                    zIndex: 1,
+                    display: 'flex',
+                    gap: 1
+                  }}
+                  onClick={(e) => e.stopPropagation()} // Prevent card click when clicking buttons
+                >
+                  <Tooltip title="Edit">
+                    <IconButton 
+                      size="small" 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEditConfig(config);
+                      }}
+                    >
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Delete">
+                    <IconButton 
+                      size="small" 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteConfig(config);
+                      }}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
                 <CardContent>
                   <Typography variant="h6" component="h3" gutterBottom>
-                    {config.modelName}
+                    {config.name || config.modelName}
                   </Typography>
                   <Divider sx={{ my: 1 }} />
                   <Box sx={{ mb: 2 }}>
                     <Typography variant="body2" color="textSecondary">
-                      Type: {config.modelType}
+                      Type: {config.sub_type || config.modelType}
                     </Typography>
                     <Typography variant="body2" color="textSecondary">
-                      Category: {config.modelCategory}
+                      Modality: {config.modality || config.modelCategory || 'NLP'}
                     </Typography>
                     <Typography variant="body2" color="textSecondary">
-                      Model ID: {config.modelId}
+                      Source: {config.source || 'huggingface'}
+                    </Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      Model ID: {config.model_id || config.modelId || config.selectedModel}
                     </Typography>
                   </Box>
 
@@ -263,30 +322,6 @@ const HomePage = () => {
                   }}
                     onClick={(e) => e.stopPropagation()} // Prevent card click when clicking buttons
                   >
-                    <Tooltip title="Delete Configuration">
-                      <IconButton 
-                        size="small" 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteConfig(config);
-                        }}
-                        sx={{ mr: 1 }}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Edit Configuration">
-                      <IconButton 
-                        size="small" 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleEditConfig(config);
-                        }}
-                        sx={{ mr: 1 }}
-                      >
-                        <EditIcon />
-                      </IconButton>
-                    </Tooltip>
                     {config.testResults.length > 0 && (
                       <Tooltip title="View Test History">
                         <IconButton 

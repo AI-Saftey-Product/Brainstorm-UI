@@ -16,7 +16,8 @@ import {
   Container,
   Grid,
 } from '@mui/material';
-import { runTests, getTestStatus, getTestResults } from '../services/testsService';
+import { runTests, getTestResults } from '../services/testsService';
+import websocketService from '../services/websocketService';
 
 const TestExecution = () => {
   const location = useLocation();
@@ -53,25 +54,74 @@ const TestExecution = () => {
   useEffect(() => {
     if (!taskId) return;
 
-    const pollStatus = async () => {
+    const setupWebSocket = async () => {
       try {
-        const statusData = await getTestStatus(taskId);
-        setStatus(statusData);
-
-        if (statusData.status === 'completed' || statusData.status === 'failed') {
-          const resultsData = await getTestResults(taskId);
-          setResults(resultsData);
-        } else if (statusData.status === 'running') {
-          // Continue polling
-          setTimeout(pollStatus, 2000);
-        }
+        // Connect to WebSocket for real-time updates
+        await websocketService.connect(taskId);
+        console.log('WebSocket connection established for test execution monitoring');
+        
+        // Handle test status updates
+        websocketService.on('test_status_update', (data) => {
+          // Update UI with status information
+          setStatus({
+            status: 'running',
+            progress: data.summary.progress || 0,
+            currentTest: data.summary.current_test || 'Processing...'
+          });
+        });
+        
+        // Handle individual test results
+        websocketService.on('test_result', (data) => {
+          console.log('Received individual test result:', data.result);
+          // We could handle individual test results here if needed
+        });
+        
+        // Handle test completion
+        websocketService.on('test_complete', async (data) => {
+          console.log('Test execution completed:', data);
+          
+          try {
+            // Fetch the final complete results
+            const resultsData = await getTestResults(taskId);
+            setResults(resultsData);
+            setStatus({
+              status: 'completed',
+              progress: 1.0
+            });
+          } catch (error) {
+            console.error('Error fetching final results:', error);
+            setError(`Failed to fetch final results: ${error.message}`);
+          }
+        });
+        
+        // Handle test failure
+        websocketService.on('test_failed', (data) => {
+          console.error('Test execution failed:', data.message);
+          setError(data.message || 'Test execution failed');
+          setStatus({
+            status: 'failed',
+            progress: 0,
+            error: data.message || 'Test execution failed'
+          });
+        });
+        
+        // Handle WebSocket connection errors
+        websocketService.on('error', (error) => {
+          console.error('WebSocket error:', error);
+          setError(`WebSocket error: ${error.message || 'Connection error'}`);
+        });
       } catch (error) {
-        console.error('Error polling test status:', error);
-        setError('Failed to get test status');
+        console.error('Failed to establish WebSocket connection:', error);
+        setError(`Failed to establish real-time connection: ${error.message}`);
       }
     };
-
-    pollStatus();
+    
+    setupWebSocket();
+    
+    // Clean up WebSocket connection when component unmounts
+    return () => {
+      websocketService.disconnect();
+    };
   }, [taskId]);
 
   if (loading) {
