@@ -109,6 +109,9 @@ const RunTestsPage = () => {
   const logsContainerRef = useRef(null);
   const logContainerRef = useRef(null);
   
+  // Add new state for test results data source
+  const [testResultsDataSource, setTestResultsDataSource] = useState([]);
+  
   // Initialize test selection when component mounts
   useEffect(() => {
     // Priority: Tests from location state (from TestConfig page)
@@ -527,6 +530,14 @@ const RunTestsPage = () => {
   };
   
   const TestResultRow = ({ item }) => {
+    // Early return if item is not in the expected format
+    if (!item || !item.test_id) {
+      console.warn('Invalid test result item:', item);
+      return null;
+    }
+
+    const category = item.test_category?.toLowerCase() || 'unknown';
+    
     return (
       <React.Fragment>
         <TableRow sx={{ '& > *': { borderBottom: 'unset' } }}>
@@ -534,9 +545,9 @@ const RunTestsPage = () => {
             <IconButton
               aria-label="expand row"
               size="small"
-              onClick={() => toggleRowExpand(item.test.id)}
+              onClick={() => toggleRowExpand(item.test_id)}
             >
-              {expandedRows[item.test.id] ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+              {expandedRows[item.test_id] ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
             </IconButton>
           </TableCell>
           <TableCell
@@ -545,32 +556,32 @@ const RunTestsPage = () => {
             sx={{
               borderBottom: 'none',
               borderLeft: `4px solid ${
-                CATEGORY_COLORS[item.test.category?.toLowerCase()] || '#757575'
+                CATEGORY_COLORS[category] || '#757575'
               }`,
             }}
           >
-            {item.test.name}
+            {item.test_name}
           </TableCell>
           <TableCell align="center" width="15%" sx={{ borderBottom: 'none' }}>
             <Chip
-              label={item.test.category}
+              label={item.test_category}
               size="small"
               sx={{
-                bgcolor: CATEGORY_COLORS[item.test.category?.toLowerCase()] || '#757575',
+                bgcolor: CATEGORY_COLORS[category] || '#757575',
                 color: 'white',
                 fontWeight: 500,
               }}
             />
           </TableCell>
           <TableCell>
-            <SeverityChip severity={item.test.severity} />
+            <SeverityChip severity={item.issues_found > 0 ? 'high' : 'low'} />
           </TableCell>
           <TableCell>
-            <StatusChip status={item.result.pass ? 'passed' : 'failed'} />
+            <StatusChip status={item.status === 'success' ? 'passed' : 'failed'} />
           </TableCell>
           <TableCell align="right">
             <ComplianceScoreGauge 
-              score={item.result.score * 100} 
+              score={item.score * 100} 
               size={36} 
               showPercent={false}
             />
@@ -578,57 +589,95 @@ const RunTestsPage = () => {
         </TableRow>
         <TableRow>
           <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={6}>
-            <Collapse in={expandedRows[item.test.id]} timeout="auto" unmountOnExit>
+            <Collapse in={expandedRows[item.test_id]} timeout="auto" unmountOnExit>
               <Box sx={{ margin: 1, py: 2 }}>
                 <Typography variant="subtitle2" gutterBottom component="div">
                   Test Details
                 </Typography>
                 <Grid container spacing={2}>
                   <Grid item xs={12} md={6}>
-                    <Typography variant="body2" color="textSecondary">
-                      {item.test.description}
-                    </Typography>
-                    
-                    {item.result.metrics && (
+                    {item.metrics && (
                       <Box sx={{ mt: 2 }}>
-                        <Typography variant="subtitle2" gutterBottom>Metrics</Typography>
+                        <Typography variant="subtitle2" gutterBottom>Performance Metrics</Typography>
                         <Box component="dl" sx={{ 
                           display: 'grid', 
                           gridTemplateColumns: 'auto 1fr',
                           rowGap: '4px',
                           columnGap: '8px'
                         }}>
-                          {Object.entries(item.result.metrics).map(([key, value]) => (
-                            <React.Fragment key={key}>
+                          {item.metrics.optimization_stats?.performance_stats && (
+                            <>
                               <Box component="dt" sx={{ fontWeight: 'bold', color: 'text.secondary' }}>
-                                {key.replace(/_/g, ' ')}:
+                                Total Time:
                               </Box>
                               <Box component="dd" sx={{ m: 0 }}>
-                                {formatMetricValue(value)}
+                                {formatMetricValue(item.metrics.optimization_stats.performance_stats.total_time)}s
                               </Box>
-                            </React.Fragment>
-                          ))}
+                              <Box component="dt" sx={{ fontWeight: 'bold', color: 'text.secondary' }}>
+                                Operations:
+                              </Box>
+                              <Box component="dd" sx={{ m: 0 }}>
+                                {item.metrics.optimization_stats.performance_stats.operation_count}
+                              </Box>
+                            </>
+                          )}
+                          {item.metrics.test_results?.performance_metrics && (
+                            <>
+                              <Box component="dt" sx={{ fontWeight: 'bold', color: 'text.secondary' }}>
+                                Test Time:
+                              </Box>
+                              <Box component="dd" sx={{ m: 0 }}>
+                                {formatMetricValue(item.metrics.test_results.performance_metrics.total_time)}s
+                              </Box>
+                              <Box component="dt" sx={{ fontWeight: 'bold', color: 'text.secondary' }}>
+                                Examples:
+                              </Box>
+                              <Box component="dd" sx={{ m: 0 }}>
+                                {item.metrics.test_results.n_examples}
+                              </Box>
+                            </>
+                          )}
                         </Box>
                       </Box>
                     )}
                   </Grid>
                   <Grid item xs={12} md={6}>
-                    {item.result.recommendations && item.result.recommendations.length > 0 && (
+                    {item.metrics?.test_results?.results && (
                       <Box>
                         <Typography variant="subtitle2" gutterBottom>
-                          Recommendations
+                          Test Examples
                         </Typography>
-                        <Box component="ul" sx={{ 
-                          m: 0, 
-                          pl: 2,
-                          '& li': {
-                            mb: 1
+                        <Box sx={{ 
+                          maxHeight: 300,
+                          overflowY: 'auto',
+                          '& > div': {
+                            mb: 2,
+                            p: 2,
+                            bgcolor: 'rgba(0,0,0,0.03)',
+                            borderRadius: 1
                           }
                         }}>
-                          {item.result.recommendations.map((rec, index) => (
-                            <li key={index}>
-                              <Typography variant="body2">{rec}</Typography>
-                            </li>
+                          {item.metrics.test_results.results.map((result, index) => (
+                            <div key={index}>
+                              <Typography variant="body2" color="text.secondary" gutterBottom>
+                                Input:
+                              </Typography>
+                              <Typography variant="body2" sx={{ mb: 1 }}>
+                                {result.input}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary" gutterBottom>
+                                Output:
+                              </Typography>
+                              <Typography variant="body2" sx={{ mb: 1 }}>
+                                {result.output}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary" gutterBottom>
+                                Expected:
+                              </Typography>
+                              <Typography variant="body2">
+                                {result.expected}
+                              </Typography>
+                            </div>
                           ))}
                         </Box>
                       </Box>
@@ -657,9 +706,18 @@ const RunTestsPage = () => {
    * @param {Object} scores - The compliance scores
    */
   const processTestResults = (results, scores) => {
+    console.log('Raw results received:', results);
+    console.log('Raw scores received:', scores);
+    
+    if (!results || !Array.isArray(results.results)) {
+      console.error('Invalid results format:', results);
+      setError('Invalid test results format received');
+      return;
+    }
+    
     // Calculate overall results
-    const totalTests = Object.values(scores).reduce((sum, score) => sum + score.total, 0);
-    const passedTests = Object.values(scores).reduce((sum, score) => sum + score.passed, 0);
+    const totalTests = Object.values(scores || {}).reduce((sum, score) => sum + score.total, 0);
+    const passedTests = Object.values(scores || {}).reduce((sum, score) => sum + score.passed, 0);
     setTotalPassed(passedTests);
     setTotalFailed(totalTests - passedTests);
     const overallScoreValue = totalTests > 0 ? (passedTests / totalTests) * 100 : 0;
@@ -671,26 +729,60 @@ const RunTestsPage = () => {
     setCurrentTestName('Completed');
     setTestComplete(true);
     
-    // Save results to context
-    saveTestResults(results, scores);
+    // Process and store test results - handle array structure
+    const processedResults = results.results.map(item => {
+      console.log('Processing item:', item);
+      if (!item) {
+        console.warn('Invalid item in results:', item);
+        return null;
+      }
+      
+      return {
+        id: item.test_id,
+        test_id: item.test_id,
+        test_name: item.test_name,
+        test_category: item.test_category,
+        status: item.status,
+        score: item.score,
+        issues_found: item.issues_found,
+        metrics: item.metrics || {},
+        created_at: item.created_at,
+        analysis: item.analysis || {}
+      };
+    }).filter(Boolean); // Remove any null items
+
+    console.log('Processed results:', processedResults);
     
-    // Save results to model storage service using the selected model ID
+    // Set the data source for the table
+    setTestResultsDataSource(processedResults);
+    
+    // Save results to context - convert array to object format
+    const resultsObject = results.results.reduce((acc, item) => {
+      if (item && item.test_id) {
+        acc[item.test_id] = item;
+      }
+      return acc;
+    }, {});
+    saveTestResults(resultsObject, scores);
+    
+    // Save results to model storage service
     saveModelTestResults(selectedModelId, {
-      results: Object.entries(results).reduce((acc, [testId, testData]) => {
-        acc[testId] = {
-          test: testData.test,
+      results: results.results.reduce((acc, testData) => {
+        if (!testData || !testData.test_id) {
+          console.warn('Invalid test data:', testData);
+          return acc;
+        }
+        
+        acc[testData.test_id] = {
+          test: {
+            id: testData.test_id,
+            name: testData.test_name,
+            category: testData.test_category
+          },
           result: {
-            ...testData.result,
-            cases: testData.result.cases || [],
-            questions: testData.result.questions || [],
-            pairs: testData.result.pairs || [],
-            details: {
-              ...testData.result.details,
-              failed_inputs: testData.result.details?.failed_inputs || []
-            },
-            metrics: testData.result.metrics || {},
-            recommendations: testData.result.recommendations || [],
-            timestamp: testData.result.timestamp || new Date().toISOString()
+            ...testData,
+            metrics: testData.metrics || {},
+            timestamp: testData.created_at
           }
         };
         return acc;
@@ -699,7 +791,7 @@ const RunTestsPage = () => {
       totalTests,
       passedTests,
       timestamp: new Date().toISOString(),
-      categoryScores: scores
+      categoryScores: scores || {}
     });
     
     addLog(`Test results saved for model: ${modelConfig?.modelName}`);
@@ -1049,13 +1141,9 @@ const RunTestsPage = () => {
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {Object.values(testResults || {}).map((item) => {
-                          if (!item || !item.test) {
-                            console.warn('Invalid test result item:', item);
-                            return null;
-                          }
-                          return <TestResultRow key={item.test.id} item={item} />;
-                        })}
+                        {testResultsDataSource.map((item) => (
+                          <TestResultRow key={item.test_id} item={item} />
+                        ))}
                       </TableBody>
                     </Table>
                   </TableContainer>
