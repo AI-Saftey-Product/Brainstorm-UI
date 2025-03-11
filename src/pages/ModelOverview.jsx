@@ -50,7 +50,30 @@ const ModelOverview = () => {
       navigate('/');
       return;
     }
-    setModelConfig(config);
+    
+    // Normalize config to ensure it has both old and new field names
+    const normalizedConfig = {
+      ...config,
+      name: config.name || config.modelName || 'Unnamed Model',
+      modelName: config.name || config.modelName || 'Unnamed Model',
+      
+      modality: config.modality || config.modelCategory || 'NLP',
+      modelCategory: config.modality || config.modelCategory || 'NLP',
+      
+      sub_type: config.sub_type || config.modelType || '',
+      modelType: config.sub_type || config.modelType || '',
+      
+      model_id: config.model_id || config.modelId || config.selectedModel || '',
+      modelId: config.model_id || config.modelId || config.selectedModel || '',
+      selectedModel: config.model_id || config.modelId || config.selectedModel || '',
+      
+      source: config.source || 'huggingface',
+      
+      api_key: config.api_key || config.apiKey || '',
+      apiKey: config.api_key || config.apiKey || ''
+    };
+    
+    setModelConfig(normalizedConfig);
 
     const results = getModelTestResults(modelId);
     setTestResults(results);
@@ -91,10 +114,10 @@ const ModelOverview = () => {
         }}>
           <Box>
             <Typography variant="h4" component="h1" gutterBottom>
-              {modelConfig.modelName}
+              {modelConfig.name || modelConfig.modelName}
             </Typography>
             <Typography variant="subtitle1" color="textSecondary">
-              {modelConfig.modelType} • {modelConfig.modelCategory}
+              {modelConfig.sub_type || modelConfig.modelType} • {modelConfig.modality || modelConfig.modelCategory || 'NLP'}
             </Typography>
           </Box>
           <Box>

@@ -47,13 +47,27 @@ import InsightsIcon from '@mui/icons-material/Insights';
 import BugReportIcon from '@mui/icons-material/BugReport';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import { useAppContext } from '../context/AppContext';
-import { TEST_CATEGORIES } from '../constants/testCategories';
 import ComplianceScoreGauge from '../components/common/ComplianceScoreGauge';
 import StatusChip from '../components/common/StatusChip';
 import SeverityChip from '../components/common/SeverityChip';
 import CategoryChip from '../components/common/CategoryChip.jsx';
 import ProgressBar from '../components/common/ProgressBar';
 import TestResultTable from '../components/widgets/TestResultTable';
+
+// Color mapping for categories
+const CATEGORY_COLORS = {
+  'security': '#e53935', // red
+  'bias': '#7b1fa2', // purple
+  'toxicity': '#d32f2f', // dark red
+  'hallucination': '#1565c0', // blue
+  'robustness': '#2e7d32', // green
+  'ethics': '#6a1b9a', // deep purple
+  'performance': '#0277bd', // light blue
+  'quality': '#00695c', // teal
+  'privacy': '#283593', // indigo
+  'safety': '#c62828', // darker red
+  'compliance': '#4527a0' // deep purple
+};
 
 const ResultsPage = () => {
   const navigate = useNavigate();
@@ -275,7 +289,7 @@ const ResultsPage = () => {
                           width: 12, 
                           height: 12, 
                           borderRadius: '50%', 
-                          bgcolor: TEST_CATEGORIES[category] || '#757575',
+                          bgcolor: CATEGORY_COLORS[category] || '#757575',
                           mr: 1 
                         }} 
                       />
@@ -417,7 +431,7 @@ const ResultsPage = () => {
                 expandIcon={<ExpandMoreIcon />}
                 sx={{ 
                   bgcolor: 'rgba(0,0,0,0.03)',
-                  borderLeft: `4px solid ${TEST_CATEGORIES[category] || '#757575'}`
+                  borderLeft: `4px solid ${CATEGORY_COLORS[category] || '#757575'}`
                 }}
               >
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', pr: 2 }}>
@@ -522,7 +536,7 @@ const ResultsPage = () => {
                   onChange={(e) => setFilterCategory(e.target.value)}
                 >
                   <MenuItem value="all">All Categories</MenuItem>
-                  {Object.keys(TEST_CATEGORIES).map(category => (
+                  {Object.keys(CATEGORY_COLORS).map(category => (
                     <MenuItem key={category} value={category}>{category}</MenuItem>
                   ))}
                 </Select>

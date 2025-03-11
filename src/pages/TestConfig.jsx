@@ -40,9 +40,9 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import HighlightOffIcon from '@mui/icons-material/HighlightOff';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import { useAppContext } from '../context/AppContext';
-import { MOCK_TESTS, TEST_CATEGORIES } from '../constants/testCategories';
 import SeverityChip from '../components/common/SeverityChip';
 import CategoryChip from '../components/common/CategoryChip';
+import { getSavedModelConfigs } from '../services/modelStorageService';
 
 const TestConfigPage = () => {
   const navigate = useNavigate();
@@ -50,9 +50,9 @@ const TestConfigPage = () => {
     selectedTests, 
     saveTestConfiguration, 
     testParameters, 
-    updateTestParameter, 
-    modelType,
-    modelCategory
+    updateTestParameter,
+    availableTests,
+    fetchTestsForModel
   } = useAppContext();
   
   const [currentTab, setCurrentTab] = useState(0);
@@ -66,40 +66,101 @@ const TestConfigPage = () => {
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState(null);
+  const [categories, setCategories] = useState([]);
+  const [error, setError] = useState(null);
   
-  // Add useRealModel state
-  const [useRealModel, setUseRealModel] = useState(false);
-  
-  // Add selectedModel state
-  const [selectedModel, setSelectedModel] = useState('gpt2');
-  
-  // Add available models list
-  const availableModels = [
-    { id: 'gpt2', name: 'GPT-2 (Small)' },
-    { id: 'gpt2-medium', name: 'GPT-2 (Medium)' },
-    { id: 'facebook/bart-large-cnn', name: 'BART (Large CNN)' },
-    { id: 'microsoft/DialoGPT-medium', name: 'DialoGPT (Medium)' },
-    { id: 'distilbert-base-uncased', name: 'DistilBERT' }
-  ];
-  
-  // Get categories based on available tests
-  const categories = Object.keys(TEST_CATEGORIES);
+  // Model selection related state
+  const [savedModels, setSavedModels] = useState([]);
+  const [selectedModelId, setSelectedModelId] = useState('');
+  const [selectedModelConfig, setSelectedModelConfig] = useState(null);
+  const [loadingTests, setLoadingTests] = useState(false);
   
   // Initialize local state from context
   useEffect(() => {
     setLocalSelectedTests(selectedTests || []);
+    
+    // Load saved models
+    const configs = getSavedModelConfigs();
+    if (configs && configs.length > 0) {
+      setSavedModels(configs);
+    } else {
+      // No saved models, redirect to model config page
+      setError('No saved models found. Please configure a model first.');
+    }
   }, [selectedTests]);
+  
+  // Fetch categories from available tests
+  useEffect(() => {
+    // Extract unique categories from available tests
+    if (Array.isArray(availableTests) && availableTests.length > 0) {
+      const uniqueCategories = [...new Set(availableTests.map(test => test.category))];
+      setCategories(uniqueCategories);
+    }
+  }, [availableTests]);
+  
+  // Handle model selection
+  const handleModelSelect = async (event) => {
+    const modelId = event.target.value;
+    setSelectedModelId(modelId);
+    
+    if (!modelId) {
+      setSelectedModelConfig(null);
+      return;
+    }
+    
+    setLoadingTests(true);
+    
+    // Find the selected model config
+    const modelConfig = savedModels.find(m => m.id === modelId);
+    if (modelConfig) {
+      setSelectedModelConfig(modelConfig);
+      
+      // Normalize config to ensure it has both old and new field names
+      const normalizedConfig = {
+        ...modelConfig,
+        name: modelConfig.name || modelConfig.modelName || 'Unnamed Model',
+        modelName: modelConfig.name || modelConfig.modelName || 'Unnamed Model',
+        
+        modality: modelConfig.modality || modelConfig.modelCategory || 'NLP',
+        modelCategory: modelConfig.modality || modelConfig.modelCategory || 'NLP',
+        
+        sub_type: modelConfig.sub_type || modelConfig.modelType || '',
+        modelType: modelConfig.sub_type || modelConfig.modelType || '',
+        
+        model_id: modelConfig.model_id || modelConfig.modelId || modelConfig.selectedModel || '',
+        modelId: modelConfig.model_id || modelConfig.modelId || modelConfig.selectedModel || '',
+        selectedModel: modelConfig.model_id || modelConfig.modelId || modelConfig.selectedModel || '',
+      };
+      
+      try {
+        // Now fetch tests based on the selected model
+        await fetchTestsForModel(normalizedConfig);
+      } catch (error) {
+        console.error('Error fetching tests for model:', error);
+        setError(`Failed to load tests for selected model: ${error.message}`);
+      } finally {
+        setLoadingTests(false);
+      }
+    }
+  };
   
   // Update select all state based on selections
   useEffect(() => {
+    if (!Array.isArray(categories) || !Array.isArray(availableTests)) {
+      return;
+    }
+    
     const newSelectAllState = {};
     categories.forEach(category => {
-      const testsInCategory = MOCK_TESTS[category].map(test => test.id);
+      const testsInCategory = availableTests
+        .filter(test => test.category === category)
+        .map(test => test.id);
+      
       const selectedInCategory = testsInCategory.filter(id => localSelectedTests.includes(id));
-      newSelectAllState[category] = selectedInCategory.length === testsInCategory.length;
+      newSelectAllState[category] = selectedInCategory.length === testsInCategory.length && testsInCategory.length > 0;
     });
     setSelectAllInCategory(newSelectAllState);
-  }, [localSelectedTests, categories]);
+  }, [localSelectedTests, categories, availableTests]);
   
   const handleTabChange = (event, newValue) => {
     setCurrentTab(newValue);
@@ -116,7 +177,14 @@ const TestConfigPage = () => {
   };
   
   const handleSelectAllForCategory = (category) => {
-    const testsInCategory = MOCK_TESTS[category].map(test => test.id);
+    if (!Array.isArray(availableTests)) {
+      console.error('availableTests is not an array in handleSelectAllForCategory');
+      return;
+    }
+    
+    const testsInCategory = availableTests
+      .filter(test => test.category === category)
+      .map(test => test.id);
     
     setLocalSelectedTests(prev => {
       if (selectAllInCategory[category]) {
@@ -177,21 +245,21 @@ const TestConfigPage = () => {
       return;
     }
     
+    // Make sure a model is selected
+    if (!selectedModelConfig) {
+      setSnackbarMessage('Please select a model before running tests');
+      setSnackbarOpen(true);
+      return;
+    }
+    
     // Save configuration before navigating
     saveTestConfiguration(localSelectedTests);
-    
-    // Create model configuration
-    const modelConfig = {
-      useRealModel,
-      selectedModel,
-      parameters: {}
-    };
     
     // Navigate to test execution page with selected tests and model config
     navigate('/run-tests', { 
       state: { 
         selectedTests: localSelectedTests,
-        modelConfig
+        modelConfig: selectedModelConfig
       } 
     });
   };
@@ -558,11 +626,24 @@ const TestConfigPage = () => {
   };
   
   const renderTestList = (category) => {
-    const testsInCategory = MOCK_TESTS[category] || [];
+    // Safety check to ensure availableTests is an array
+    if (!Array.isArray(availableTests)) {
+      console.error('availableTests is not an array:', availableTests);
+      return (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          Error loading tests. Please try refreshing the page.
+        </Alert>
+      );
+    }
     
-    // Filter tests for NLP category if the model isn't an NLP or multimodal model
+    // Filter tests for this category
+    const testsInCategory = availableTests.filter(test => 
+      test && test.category === category
+    );
+    
+    // Filter tests for compatibility with model type if needed
     const filteredTests = category === 'NLP-Specific' && 
-                         !['NLP', 'Multimodal'].includes(modelCategory) 
+                         !['NLP', 'Multimodal'].includes(selectedModelConfig?.modelCategory) 
                          ? [] 
                          : testsInCategory;
     
@@ -658,9 +739,9 @@ const TestConfigPage = () => {
   
   const recommendedCategories = () => {
     // Different recommendations based on model type and risk level
-    if (modelCategory === 'NLP') {
+    if (selectedModelConfig?.modelCategory === 'NLP') {
       return ['Technical Safety', 'NLP-Specific', 'Fairness & Bias'];
-    } else if (modelCategory === 'Vision') {
+    } else if (selectedModelConfig?.modelCategory === 'Vision') {
       return ['Technical Safety', 'Fairness & Bias', 'Privacy Protection'];
     } else {
       return ['Technical Safety', 'Regulatory Compliance'];
@@ -711,7 +792,7 @@ const TestConfigPage = () => {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [localSelectedTests, selectedTests]);
 
-  // Listen for navigation attempts
+  // Add event listener for window navigation events
   useEffect(() => {
     const handleNavigation = (event) => {
       if (hasUnsavedChanges()) {
@@ -732,63 +813,124 @@ const TestConfigPage = () => {
       <Typography variant="h4" gutterBottom>
         Test Configuration
       </Typography>
-      
+
+      {error && (
+        <Alert 
+          severity="error" 
+          sx={{ mb: 3 }}
+          action={
+            <Button 
+              color="inherit" 
+              size="small"
+              onClick={() => navigate('/model-config')}
+            >
+              Configure Model
+            </Button>
+          }
+        >
+          {error}
+        </Alert>
+      )}
+
+      {/* Model Selection Section */}
       <Paper sx={{ p: 3, mb: 3 }}>
         <Typography variant="h6" gutterBottom>
-          Recommended Tests
+          Select Model
         </Typography>
         <Typography variant="body2" color="textSecondary" paragraph>
-          Based on your model type ({modelType}) and configuration, we recommend the following test categories:
+          Choose the model you want to test from your saved configurations. Available tests will be filtered based on this selection.
         </Typography>
-        
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          {recommendedCategories().map(category => (
-            <Chip 
-              key={category}
-              label={category}
-              onClick={() => {
-                const index = categories.indexOf(category);
-                if (index !== -1) {
-                  setCurrentTab(index);
-                }
-              }}
-              sx={{ cursor: 'pointer' }}
-            />
-          ))}
-        </Box>
-      </Paper>
-      
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
-          <Tabs 
-            value={currentTab} 
-            onChange={handleTabChange}
-            variant="scrollable"
-            scrollButtons="auto"
+
+        <FormControl fullWidth sx={{ mb: 2 }}>
+          <InputLabel id="model-select-label">Model</InputLabel>
+          <Select
+            labelId="model-select-label"
+            id="model-select"
+            value={selectedModelId}
+            label="Model"
+            onChange={handleModelSelect}
+            disabled={loadingTests}
           >
-            {categories.map((category, index) => (
-              <Tab 
-                key={category} 
-                label={category} 
-                id={`test-tab-${index}`}
-                aria-controls={`test-tabpanel-${index}`}
-              />
+            <MenuItem value="">
+              <em>Select a model</em>
+            </MenuItem>
+            {savedModels.map((model) => (
+              <MenuItem key={model.id} value={model.id}>
+                {model.name || model.modelName} ({model.sub_type || model.modelType})
+              </MenuItem>
             ))}
-          </Tabs>
-        </Box>
-        
-        {categories.map((category, index) => (
-          <Box
-            key={category}
-            role="tabpanel"
-            hidden={currentTab !== index}
-            id={`test-tabpanel-${index}`}
-            aria-labelledby={`test-tab-${index}`}
-          >
-            {currentTab === index && renderTestList(category)}
+          </Select>
+        </FormControl>
+
+        {loadingTests && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
+            <CircularProgress size={24} />
+            <Typography variant="body2" color="textSecondary" sx={{ ml: 2 }}>
+              Loading compatible tests...
+            </Typography>
           </Box>
-        ))}
+        )}
+
+        {selectedModelConfig && (
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="subtitle1">Selected Model: {selectedModelConfig.name || selectedModelConfig.modelName}</Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+              <Chip 
+                label={`Type: ${selectedModelConfig.sub_type || selectedModelConfig.modelType}`} 
+                size="small" 
+                color="primary" 
+                variant="outlined" 
+              />
+              <Chip 
+                label={`Modality: ${selectedModelConfig.modality || selectedModelConfig.modelCategory}`} 
+                size="small" 
+                color="secondary" 
+                variant="outlined" 
+              />
+              <Chip 
+                label={`ID: ${selectedModelConfig.model_id || selectedModelConfig.modelId || selectedModelConfig.selectedModel}`} 
+                size="small" 
+                variant="outlined" 
+              />
+            </Box>
+          </Box>
+        )}
       </Paper>
+
+      {/* Only show test selection if a model is selected */}
+      {selectedModelConfig && (
+        <Paper sx={{ p: 3, mb: 3 }}>
+          <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+            <Tabs 
+              value={currentTab} 
+              onChange={handleTabChange}
+              variant="scrollable"
+              scrollButtons="auto"
+            >
+              {categories.map((category, index) => (
+                <Tab 
+                  key={category} 
+                  label={category} 
+                  id={`test-tab-${index}`}
+                  aria-controls={`test-tabpanel-${index}`}
+                />
+              ))}
+            </Tabs>
+          </Box>
+          
+          {categories.map((category, index) => (
+            <Box
+              key={category}
+              role="tabpanel"
+              hidden={currentTab !== index}
+              id={`test-tabpanel-${index}`}
+              aria-labelledby={`test-tab-${index}`}
+            >
+              {currentTab === index && renderTestList(category)}
+            </Box>
+          ))}
+        </Paper>
+      )}
       
       <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography>

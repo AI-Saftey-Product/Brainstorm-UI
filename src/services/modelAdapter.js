@@ -11,7 +11,39 @@ import { getHuggingFaceModel } from './huggingFaceService';
  * @returns {Object} - Model adapter with standardized interface
  */
 export const createModelAdapter = async (modelConfig) => {
-  return await createHuggingFaceAdapter(modelConfig);
+  // Log the incoming model config for debugging
+  console.log('Creating model adapter with config:', modelConfig);
+  
+  // Validate required fields for the API
+  if (!modelConfig.name) {
+    throw new Error('Model name is required');
+  }
+  
+  if (!modelConfig.modality) {
+    throw new Error('Model modality is required');
+  }
+  
+  if (!modelConfig.sub_type) {
+    throw new Error('Model sub_type is required');
+  }
+  
+  if (!modelConfig.source) {
+    throw new Error('Model source is required');
+  }
+  
+  if (!modelConfig.model_id) {
+    throw new Error('Model ID is required');
+  }
+  
+  // Create the appropriate adapter based on source
+  switch (modelConfig.source.toLowerCase()) {
+    case 'huggingface':
+      return await createHuggingFaceAdapter(modelConfig);
+    case 'custom':
+      return await createCustomAdapter(modelConfig);
+    default:
+      throw new Error(`Unsupported model source: ${modelConfig.source}`);
+  }
 };
 
 /**
@@ -21,14 +53,20 @@ export const createModelAdapter = async (modelConfig) => {
  */
 const createHuggingFaceAdapter = async (modelConfig) => {
   try {
-    // Validate API key
-    if (!import.meta.env.VITE_HUGGING_FACE_API_KEY) {
-      throw new Error('Hugging Face API key not found. Please add it to your .env file as VITE_HUGGING_FACE_API_KEY.');
+    // Validate HuggingFace specific required fields
+    if (!modelConfig.api_key) {
+      throw new Error('API key is required for HuggingFace models');
+    }
+
+    // Check for valid model ID
+    const modelId = modelConfig.model_id;
+    if (!modelId || modelId === 'None' || modelId === 'undefined') {
+      throw new Error('Missing or invalid Hugging Face model ID');
     }
 
     // Initialize the Hugging Face model
-    console.log(`Initializing Hugging Face model with ID: ${modelConfig.selectedModel}`);
-    const model = await getHuggingFaceModel(modelConfig.selectedModel);
+    console.log(`Initializing Hugging Face model with ID: ${modelId}`);
+    const model = await getHuggingFaceModel(modelId, modelConfig.api_key);
     
     // Test the model with a simple query
     try {
@@ -40,9 +78,12 @@ const createHuggingFaceAdapter = async (modelConfig) => {
     }
     
     return {
-      modelType: 'huggingface',
-      modelId: modelConfig.selectedModel,
+      name: modelConfig.name,
+      modality: modelConfig.modality,
+      sub_type: modelConfig.sub_type,
       source: 'huggingface',
+      model_id: modelId,
+      api_key: modelConfig.api_key,
       
       /**
        * Get a prediction from the Hugging Face model
@@ -78,9 +119,11 @@ const createHuggingFaceAdapter = async (modelConfig) => {
        */
       getModelInfo: () => {
         return {
-          name: modelConfig.selectedModel,
-          type: 'huggingface',
-          parameters: modelConfig.parameters || {}
+          name: modelConfig.name,
+          modality: modelConfig.modality,
+          sub_type: modelConfig.sub_type,
+          source: 'huggingface',
+          model_id: modelId
         };
       }
     };
@@ -91,28 +134,46 @@ const createHuggingFaceAdapter = async (modelConfig) => {
 };
 
 /**
+ * Creates an adapter for custom models
+ * @param {Object} modelConfig - Configuration for the custom model
+ * @returns {Object} - Model adapter with standardized interface
+ */
+const createCustomAdapter = async (modelConfig) => {
+  // This is a placeholder for custom model integration
+  return {
+    name: modelConfig.name,
+    modality: modelConfig.modality,
+    sub_type: modelConfig.sub_type,
+    source: 'custom',
+    model_id: modelConfig.model_id,
+    
+    getPrediction: async (input) => {
+      throw new Error('Custom model integration is not yet implemented');
+    },
+    
+    getModelInfo: () => {
+      return {
+        name: modelConfig.name,
+        modality: modelConfig.modality,
+        sub_type: modelConfig.sub_type,
+        source: 'custom',
+        model_id: modelConfig.model_id
+      };
+    }
+  };
+};
+
+/**
  * Extract confidence score from model response
- * @param {Object|Array|string} result - The model result
- * @returns {number} - Confidence score (0-1)
+ * @param {Object} result - Raw model response
+ * @returns {number} - Confidence score between 0 and 1
  */
 const extractConfidence = (result) => {
-  // Handle different response formats
-  if (Array.isArray(result) && result.length > 0) {
-    // If result is an array of scored responses
-    if (result[0].score !== undefined) {
-      return result[0].score;
+  if (typeof result === 'object') {
+    if (Array.isArray(result)) {
+      return result[0]?.score || 0.5;
     }
-    return 0.8; // Default confidence for array responses
-  } else if (typeof result === 'object') {
-    // If result is an object with score/confidence
-    if (result.score !== undefined) {
-      return result.score;
-    } else if (result.confidence !== undefined) {
-      return result.confidence;
-    }
-    return 0.7; // Default confidence for object responses
+    return result.score || 0.5;
   }
-  
-  // Default confidence
   return 0.5;
 }; 
