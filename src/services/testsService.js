@@ -3,7 +3,7 @@
  * Handles test operations and execution
  */
 
-const API_BASE_URL = 'https://51.20.87.231:8000';
+const API_BASE_URL = 'http://51.20.87.231:8000';
 
 // Default fetch options for all API calls
 const fetchOptions = {

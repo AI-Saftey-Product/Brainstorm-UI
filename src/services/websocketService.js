@@ -4,7 +4,7 @@
  */
 
 // WebSocket endpoint URL
-const WS_URL = 'wss://51.20.87.231:8000/ws/tests/';
+const WS_URL = 'ws://51.20.87.231:8000/ws/tests/';
 
 class WebSocketService {
   constructor() {
