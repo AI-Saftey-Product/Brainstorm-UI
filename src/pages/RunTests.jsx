@@ -130,29 +130,21 @@ const RunTestsPage = () => {
   
   // Group tests by category
   const groupTestsByCategory = () => {
-    // Use availableTests from context instead of MOCK_TESTS
     const grouped = {};
     
-    // First, create empty arrays for all categories we have
-    if (Array.isArray(availableTests)) {
-      // Get unique categories
-      const categories = [...new Set(availableTests.map(test => test.category))];
-      categories.forEach(category => {
-        grouped[category] = [];
-      });
+    // Only process selected tests
+    if (Array.isArray(availableTests) && Array.isArray(selectedTests)) {
+      // Get only the selected tests' details
+      const selectedTestDetails = availableTests.filter(test => selectedTests.includes(test.id));
       
-      // Group selected tests by category
-      for (const testId of selectedTests) {
-        // Find test in available tests
-        const test = availableTests.find(t => t.id === testId);
-        if (test) {
-          const category = test.category;
-          if (!grouped[category]) {
-            grouped[category] = [];
-          }
-          grouped[category].push(testId);
+      // Group the selected tests by category
+      selectedTestDetails.forEach(test => {
+        const category = test.category;
+        if (!grouped[category]) {
+          grouped[category] = [];
         }
-      }
+        grouped[category].push(test.id);
+      });
     }
     
     return grouped;
@@ -905,11 +897,11 @@ const RunTestsPage = () => {
             <Paper sx={{ p: 3, mb: 3 }}>
               <Box sx={{ mb: 3 }}>
                 <Typography variant="h6" gutterBottom>
-                  Test Summary
+                  Test Summary ({selectedTests.length} Tests Selected)
                 </Typography>
                 
                 <Grid container spacing={2}>
-                  {Object.entries(groupTestsByCategory()).map(([category, count]) => (
+                  {Object.entries(groupTestsByCategory()).map(([category, tests]) => (
                     <Grid item xs={6} sm={4} md={3} key={category}>
                       <Paper 
                         elevation={0} 
@@ -933,7 +925,7 @@ const RunTestsPage = () => {
                           <Typography variant="body2">{category}</Typography>
                         </Box>
                         <Typography variant="h5" sx={{ mt: 1, fontWeight: 'medium' }}>
-                          {count}
+                          {tests.length}
                         </Typography>
                       </Paper>
                     </Grid>

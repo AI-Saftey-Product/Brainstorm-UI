@@ -810,9 +810,15 @@ const TestConfigPage = () => {
 
   return (
     <Container maxWidth="lg">
-      <Typography variant="h4" gutterBottom>
-        Test Configuration
-      </Typography>
+      <Box sx={{ mb: 4 }}>
+        <Typography 
+          variant="h3" 
+          component="h1" 
+          sx={{ mb: 4 }}
+        >
+          Test Configuration
+        </Typography>
+      </Box>
 
       {error && (
         <Alert 

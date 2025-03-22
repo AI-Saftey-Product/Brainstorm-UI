@@ -3,11 +3,12 @@
  * Handles test operations and execution
  */
 
-const API_BASE_URL = 'http://127.0.0.1:8000';
+const API_BASE_URL = import.meta.env.VITE_TESTS_API_URL || 'http://13.48.48.75:8000';
 
 // Default fetch options for all API calls
 const fetchOptions = {
   mode: 'cors',
+  credentials: 'include',
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'
@@ -165,6 +166,7 @@ export const runTests = async (testIds, modelConfig, testParameters = {}, logCal
 export const getFilteredTests = async (modelConfig) => {
   try {
     console.log('getFilteredTests called with:', modelConfig);
+    console.log('Using API base URL:', API_BASE_URL);
     
     // Ensure we have at least one required parameter
     if (!modelConfig || (!modelConfig.modality && !modelConfig.model_type)) {
@@ -188,14 +190,18 @@ export const getFilteredTests = async (modelConfig) => {
 
     const url = `${API_BASE_URL}/api/tests/model-tests?${params.toString()}`;
     console.log('Fetching filtered tests from backend URL:', url);
+    console.log('Using fetch options:', fetchOptions);
     
     // Use the correct API endpoint for model-specific tests
     const response = await fetch(url, fetchOptions);
     console.log('Response status:', response.status);
+    console.log('Response headers:', Object.fromEntries([...response.headers.entries()]));
     
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`Error ${response.status} response from API:`, errorText);
+      console.error('Request URL:', url);
+      console.error('Request options:', fetchOptions);
       
       if (response.status === 422) {
         console.error('Unprocessable Content Error. API parameters may be incorrect.', modelConfig);
@@ -217,6 +223,7 @@ export const getFilteredTests = async (modelConfig) => {
       return testsArray;
     } else if (Array.isArray(data)) {
       // Already in array format
+      console.log('Data is already in array format, count:', data.length);
       return data;
     } else {
       console.error('Unexpected data format from API:', data);
@@ -224,6 +231,8 @@ export const getFilteredTests = async (modelConfig) => {
     }
   } catch (error) {
     console.error('Error in getFilteredTests:', error);
+    console.error('Model config that caused error:', modelConfig);
+    console.error('API base URL:', API_BASE_URL);
     throw error;
   }
 };

@@ -1,30 +1,34 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
   Button,
   Grid,
-  Card,
-  CardContent,
   Paper,
-  Divider,
   Container,
-  IconButton,
+  TextField,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  InputAdornment,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  LinearProgress,
-  Alert,
+  Skeleton,
+  Snackbar,
 } from '@mui/material';
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import DeleteIcon from '@mui/icons-material/Delete';
-import EditIcon from '@mui/icons-material/Edit';
-import TimelineIcon from '@mui/icons-material/Timeline';
+import { Search, Grid as GridIcon, List } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { getSavedModelConfigs, getModelTestResults, deleteModelConfig } from '../services/modelStorageService';
+import { useHotkeys } from 'react-hotkeys-hook';
+import ModelCard from '../components/cards/ModelCard';
+import AddModelCard from '../components/cards/AddModelCard';
 
 const HomePage = () => {
   const navigate = useNavigate();
@@ -32,6 +36,12 @@ const HomePage = () => {
   const [savedConfigs, setSavedConfigs] = useState([]);
   const [selectedConfig, setSelectedConfig] = useState(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState('name');
+  const [groupBy, setGroupBy] = useState('none');
+  const [viewMode, setViewMode] = useState('grid');
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
   useEffect(() => {
     loadSavedConfigs();
@@ -70,6 +80,7 @@ const HomePage = () => {
       };
     });
     setSavedConfigs(configsWithResults);
+    setLoading(false);
   };
 
   const handleDeleteConfig = async (config) => {
@@ -83,6 +94,7 @@ const HomePage = () => {
       loadSavedConfigs();
       setDeleteDialogOpen(false);
       setSelectedConfig(null);
+      showSnackbar('Model configuration deleted successfully');
     }
   };
 
@@ -95,7 +107,83 @@ const HomePage = () => {
     navigate('/model-config');
   };
 
-  if (savedConfigs.length === 0) {
+  const handleSearch = (event) => {
+    setSearchTerm(event.target.value);
+  };
+
+  const handleSort = (event) => {
+    setSortBy(event.target.value);
+  };
+
+  const handleGroup = (event) => {
+    setGroupBy(event.target.value);
+  };
+
+  const handleViewMode = (event, newMode) => {
+    if (newMode !== null) {
+      setViewMode(newMode);
+    }
+  };
+
+  const showSnackbar = (message, severity = 'success') => {
+    setSnackbar({ open: true, message, severity });
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar({ ...snackbar, open: false });
+  };
+
+  // Filter and sort configs
+  const filteredAndSortedConfigs = savedConfigs
+    .filter(config => {
+      const searchLower = searchTerm.toLowerCase();
+      return (
+        config.name.toLowerCase().includes(searchLower) ||
+        config.sub_type.toLowerCase().includes(searchLower) ||
+        config.modality.toLowerCase().includes(searchLower)
+      );
+    })
+    .sort((a, b) => {
+      switch (sortBy) {
+        case 'name':
+          return a.name.localeCompare(b.name);
+        case 'date':
+          return new Date(b.lastModified) - new Date(a.lastModified);
+        case 'tests':
+          return (b.testResults?.length || 0) - (a.testResults?.length || 0);
+        default:
+          return 0;
+      }
+    });
+
+  // Keyboard shortcuts
+  useHotkeys('ctrl+f', (e) => {
+    e.preventDefault();
+    document.querySelector('input[placeholder="Search models..."]')?.focus();
+  });
+
+  useHotkeys('ctrl+g', (e) => {
+    e.preventDefault();
+    setViewMode(prev => prev === 'grid' ? 'list' : 'grid');
+  });
+
+  useHotkeys('ctrl+n', (e) => {
+    e.preventDefault();
+    handleGetStarted();
+  });
+
+  // Enhanced navigation handler with animation
+  const handleCardClick = useCallback((config) => {
+    const card = document.querySelector(`[data-model-id="${config.id}"]`);
+    if (card) {
+      card.style.transform = 'scale(0.98)';
+      setTimeout(() => {
+        navigate(`/model/${config.id}`);
+      }, 150);
+    }
+  }, [navigate]);
+
+  if (savedConfigs.length === 0 && !loading) {
     return (
       <Container maxWidth="lg">
         <Box 
@@ -105,7 +193,8 @@ const HomePage = () => {
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            textAlign: 'center'
+            textAlign: 'center',
+            bgcolor: '#F8F9FA'
           }}
         >
           <Typography 
@@ -138,7 +227,7 @@ const HomePage = () => {
             <Typography variant="h5" gutterBottom>
               Welcome!
             </Typography>
-            <Typography variant="body1" color="textSecondary" sx={{ mb: 3 }}>
+            <Typography variant="body1" sx={{ mb: 3 }}>
               Configure your first model to begin testing for compliance and safety standards.
             </Typography>
             <Button
@@ -159,201 +248,133 @@ const HomePage = () => {
 
   return (
     <Container maxWidth="lg">
-      <Box sx={{ mt: 4, mb: 6 }}>
-        <Box sx={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center',
-          mb: 4
-        }}>
-          <Typography 
-            variant="h3" 
-            component="h1" 
-            sx={{ 
-              fontWeight: 'bold',
-              background: 'linear-gradient(45deg, #3f51b5 30%, #8561c5 90%)',
-              backgroundClip: 'text',
-              textFillColor: 'transparent',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-            }}
-          >
-            Model Configurations
-          </Typography>
-          <Button
-            variant="contained"
-            color="primary"
-            endIcon={<ArrowForwardIcon />}
-            onClick={handleGetStarted}
-          >
-            Add New Model
-          </Button>
+      <Box 
+        sx={{ 
+          minHeight: '100vh',
+          width: '100%',
+          bgcolor: '#F8F9FA',
+          py: 4
+        }}
+      >
+        <Typography 
+          variant="h3" 
+          component="h1" 
+          sx={{ mb: 4 }}
+        >
+          Model Overview
+        </Typography>
+
+        {/* Controls with keyboard shortcut hints */}
+        <Box sx={{ display: 'flex', gap: 2, mb: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Tooltip title="Search (Ctrl+F)">
+            <TextField
+              placeholder="Search models..."
+              value={searchTerm}
+              onChange={handleSearch}
+              size="small"
+              sx={{ flexGrow: 1, minWidth: 200 }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search size={20} />
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </Tooltip>
+
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <InputLabel>Sort by</InputLabel>
+            <Select value={sortBy} onChange={handleSort} label="Sort by">
+              <MenuItem value="name">Name</MenuItem>
+              <MenuItem value="date">Last Modified</MenuItem>
+              <MenuItem value="tests">Test Count</MenuItem>
+            </Select>
+          </FormControl>
+
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <InputLabel>Group by</InputLabel>
+            <Select value={groupBy} onChange={handleGroup} label="Group by">
+              <MenuItem value="none">None</MenuItem>
+              <MenuItem value="modality">Modality</MenuItem>
+              <MenuItem value="type">Type</MenuItem>
+            </Select>
+          </FormControl>
+
+          <Tooltip title="Toggle View (Ctrl+G)">
+            <ToggleButtonGroup
+              value={viewMode}
+              exclusive
+              onChange={handleViewMode}
+              size="small"
+            >
+              <ToggleButton value="grid" aria-label="grid view">
+                <GridIcon size={20} />
+              </ToggleButton>
+              <ToggleButton value="list" aria-label="list view">
+                <List size={20} />
+              </ToggleButton>
+            </ToggleButtonGroup>
+          </Tooltip>
         </Box>
 
-        <Grid container spacing={3}>
-          {savedConfigs.map((config) => (
-            <Grid item xs={12} md={6} key={config.id}>
-              <Card 
-                sx={{ 
-                  height: '100%',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  position: 'relative',
-                  cursor: 'pointer',
-                  '&:hover': {
-                    boxShadow: 6,
-                    transform: 'translateY(-2px)',
-                    transition: 'all 0.2s ease-in-out'
-                  }
-                }}
-                onClick={() => navigate(`/model/${config.id}`)}
-              >
-                <Box 
+        {/* Loading State */}
+        {loading ? (
+          <Grid container spacing={3}>
+            {[1, 2, 3, 4].map((skeleton) => (
+              <Grid item xs={12} md={viewMode === 'grid' ? 6 : 12} key={skeleton}>
+                <Skeleton 
+                  variant="rectangular" 
+                  height={viewMode === 'grid' ? 200 : 100} 
                   sx={{ 
-                    position: 'absolute', 
-                    top: 8, 
-                    right: 8, 
-                    zIndex: 1,
-                    display: 'flex',
-                    gap: 1
+                    borderRadius: 1,
+                    animation: 'pulse 1.5s ease-in-out 0.5s infinite'
                   }}
-                  onClick={(e) => e.stopPropagation()} // Prevent card click when clicking buttons
-                >
-                  <Tooltip title="Edit">
-                    <IconButton 
-                      size="small" 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleEditConfig(config);
-                      }}
-                    >
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Delete">
-                    <IconButton 
-                      size="small" 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteConfig(config);
-                      }}
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                </Box>
-                <CardContent>
-                  <Typography variant="h6" component="h3" gutterBottom>
-                    {config.name || config.modelName}
-                  </Typography>
-                  <Divider sx={{ my: 1 }} />
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="body2" color="textSecondary">
-                      Type: {config.sub_type || config.modelType}
-                    </Typography>
-                    <Typography variant="body2" color="textSecondary">
-                      Modality: {config.modality || config.modelCategory || 'NLP'}
-                    </Typography>
-                    <Typography variant="body2" color="textSecondary">
-                      Source: {config.source || 'huggingface'}
-                    </Typography>
-                    <Typography variant="body2" color="textSecondary">
-                      Model ID: {config.model_id || config.modelId || config.selectedModel}
-                    </Typography>
-                  </Box>
-
-                  {/* Test Results Summary */}
-                  {config.testResults.length > 0 && (
-                    <Box sx={{ mt: 2 }}>
-                      <Divider sx={{ my: 1 }} />
-                      <Typography variant="subtitle2" gutterBottom>
-                        Latest Test Results
-                      </Typography>
-                      <Box sx={{ mb: 1 }}>
-                        <Typography variant="body2" color="textSecondary">
-                          Last Run: {new Date(config.lastTestRun).toLocaleDateString()}
-                        </Typography>
-                        {config.testResults[config.testResults.length - 1].results && (
-                          <>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
-                              <Typography variant="body2" color="textSecondary">
-                                Overall Compliance:
-                              </Typography>
-                              <Typography 
-                                variant="body2" 
-                                sx={{ 
-                                  fontWeight: 'bold',
-                                  color: theme => {
-                                    const score = config.testResults[config.testResults.length - 1].results.overallScore;
-                                    return score >= 80 ? theme.palette.success.main :
-                                           score >= 50 ? theme.palette.warning.main :
-                                           theme.palette.error.main;
-                                  }
-                                }}
-                              >
-                                {config.testResults[config.testResults.length - 1].results.overallScore}%
-                              </Typography>
-                            </Box>
-                            <LinearProgress 
-                              variant="determinate" 
-                              value={config.testResults[config.testResults.length - 1].results.overallScore}
-                              sx={{ 
-                                mt: 1,
-                                height: 6,
-                                borderRadius: 1,
-                                bgcolor: 'rgba(0,0,0,0.05)',
-                                '& .MuiLinearProgress-bar': {
-                                  borderRadius: 1,
-                                }
-                              }}
-                            />
-                          </>
-                        )}
-                      </Box>
-                    </Box>
-                  )}
-
-                  {/* Action Buttons */}
-                  <Box sx={{ 
-                    display: 'flex', 
-                    justifyContent: 'flex-end',
-                    mt: 'auto',
-                    pt: 2
-                  }}
-                    onClick={(e) => e.stopPropagation()} // Prevent card click when clicking buttons
-                  >
-                    {config.testResults.length > 0 && (
-                      <Tooltip title="View Test History">
-                        <IconButton 
-                          size="small" 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`/model/${config.id}`);
-                          }}
-                        >
-                          <TimelineIcon />
-                        </IconButton>
-                      </Tooltip>
-                    )}
-                  </Box>
-                </CardContent>
-              </Card>
+                />
+              </Grid>
+            ))}
+          </Grid>
+        ) : (
+          <Grid container spacing={3}>
+            {filteredAndSortedConfigs.map((config) => (
+              <Grid item xs={12} md={viewMode === 'grid' ? 6 : 12} key={config.id}>
+                <ModelCard
+                  config={config}
+                  viewMode={viewMode}
+                  onEdit={handleEditConfig}
+                  onDelete={handleDeleteConfig}
+                  onClick={() => handleCardClick(config)}
+                />
+              </Grid>
+            ))}
+            
+            {/* Add New Model Card */}
+            <Grid item xs={12} md={viewMode === 'grid' ? 6 : 12}>
+              <AddModelCard
+                viewMode={viewMode}
+                onClick={handleGetStarted}
+              />
             </Grid>
-          ))}
-        </Grid>
+          </Grid>
+        )}
       </Box>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+        message={snackbar.message}
+        severity={snackbar.severity}
+      />
+
       <Dialog
         open={deleteDialogOpen}
         onClose={() => setDeleteDialogOpen(false)}
       >
-        <DialogTitle>Delete Configuration</DialogTitle>
+        <DialogTitle>Delete Model Configuration</DialogTitle>
         <DialogContent>
-          <Typography>
-            Are you sure you want to delete the configuration for "{selectedConfig?.modelName}"? 
-            This will also delete all associated test results.
-          </Typography>
+          Are you sure you want to delete this model configuration?
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>

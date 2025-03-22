@@ -163,7 +163,11 @@ const ModelConfigPage = () => {
   
   return (
     <Container maxWidth="lg">
-      <Typography variant="h4" gutterBottom>
+      <Typography 
+        variant="h3" 
+        component="h1" 
+        sx={{ mb: 4 }}
+      >
         Model Configuration
       </Typography>
       
