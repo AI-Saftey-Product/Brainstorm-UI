@@ -24,6 +24,7 @@ import {
   Snackbar,
 } from '@mui/material';
 import { Search, Grid as GridIcon, List } from 'lucide-react';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { useAppContext } from '../context/AppContext';
 import { getSavedModelConfigs, getModelTestResults, deleteModelConfig } from '../services/modelStorageService';
 import { useHotkeys } from 'react-hotkeys-hook';
@@ -182,69 +183,6 @@ const HomePage = () => {
       }, 150);
     }
   }, [navigate]);
-
-  if (savedConfigs.length === 0 && !loading) {
-    return (
-      <Container maxWidth="lg">
-        <Box 
-          sx={{ 
-            minHeight: '80vh',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            textAlign: 'center',
-            bgcolor: '#F8F9FA'
-          }}
-        >
-          <Typography 
-            variant="h3" 
-            component="h1" 
-            gutterBottom 
-            sx={{ 
-              fontWeight: 'bold',
-              background: 'linear-gradient(45deg, #3f51b5 30%, #8561c5 90%)',
-              backgroundClip: 'text',
-              textFillColor: 'transparent',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              mb: 4
-            }}
-          >
-            AI Safety Testing Platform
-          </Typography>
-          
-          <Paper 
-            elevation={3}
-            sx={{ 
-              p: 4, 
-              borderRadius: 2,
-              textAlign: 'center',
-              maxWidth: 400,
-              width: '100%'
-            }}
-          >
-            <Typography variant="h5" gutterBottom>
-              Welcome!
-            </Typography>
-            <Typography variant="body1" sx={{ mb: 3 }}>
-              Configure your first model to begin testing for compliance and safety standards.
-            </Typography>
-            <Button
-              variant="contained"
-              color="primary"
-              size="large"
-              endIcon={<ArrowForwardIcon />}
-              onClick={handleGetStarted}
-              fullWidth
-            >
-              Configure Your First Model
-            </Button>
-          </Paper>
-        </Box>
-      </Container>
-    );
-  }
 
   return (
     <Container maxWidth="lg">
