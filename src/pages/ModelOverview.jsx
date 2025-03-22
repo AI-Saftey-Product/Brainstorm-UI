@@ -18,6 +18,23 @@ import {
   TableRow,
   IconButton,
   Tooltip,
+  Chip,
+  LinearProgress,
+  Collapse,
+  Alert,
+  AlertTitle,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Stack,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Checkbox,
+  TableSortLabel,
+  TextField,
 } from '@mui/material';
 import {
   LineChart,
@@ -28,9 +45,20 @@ import {
   Tooltip as ChartTooltip,
   Legend,
   ResponsiveContainer,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  Radar,
 } from 'recharts';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import EditIcon from '@mui/icons-material/Edit';
+import WarningIcon from '@mui/icons-material/Warning';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ErrorIcon from '@mui/icons-material/Error';
+import InfoIcon from '@mui/icons-material/Info';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import { getModelConfigById, getModelTestResults } from '../services/modelStorageService';
 
 const ModelOverview = () => {
@@ -39,6 +67,14 @@ const ModelOverview = () => {
   const [modelConfig, setModelConfig] = useState(null);
   const [testResults, setTestResults] = useState([]);
   const [timeSeriesData, setTimeSeriesData] = useState([]);
+  const [selectedRows, setSelectedRows] = useState([]);
+  const [expandedRow, setExpandedRow] = useState(null);
+  const [sortConfig, setSortConfig] = useState({ field: 'timestamp', direction: 'desc' });
+  const [filters, setFilters] = useState({
+    status: 'all',
+    dateRange: 'all',
+    score: 'all'
+  });
 
   useEffect(() => {
     loadModelData();
@@ -98,6 +134,52 @@ const ModelOverview = () => {
     navigate('/model-config', { state: { config: modelConfig } });
   };
 
+  const handleSort = (field) => {
+    setSortConfig(prev => ({
+      field,
+      direction: prev.field === field && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
+
+  const getFilteredResults = () => {
+    return testResults.filter(result => {
+      if (filters.status !== 'all') {
+        const passed = result.results.overallScore >= 80;
+        if (filters.status === 'passed' && !passed) return false;
+        if (filters.status === 'failed' && passed) return false;
+      }
+      
+      if (filters.dateRange !== 'all') {
+        const date = new Date(result.timestamp);
+        const now = new Date();
+        if (filters.dateRange === 'week' && date < new Date(now - 7 * 24 * 60 * 60 * 1000)) return false;
+        if (filters.dateRange === 'month' && date < new Date(now - 30 * 24 * 60 * 60 * 1000)) return false;
+      }
+      
+      if (filters.score !== 'all') {
+        const score = result.results.overallScore;
+        if (filters.score === 'high' && score < 80) return false;
+        if (filters.score === 'medium' && (score < 50 || score >= 80)) return false;
+        if (filters.score === 'low' && score >= 50) return false;
+      }
+      
+      return true;
+    });
+  };
+
+  const handleBulkAction = (action) => {
+    switch (action) {
+      case 'export':
+        // Handle export
+        break;
+      case 'delete':
+        // Handle delete
+        break;
+      default:
+        break;
+    }
+  };
+
   if (!modelConfig) {
     return null;
   }
@@ -113,7 +195,11 @@ const ModelOverview = () => {
           mb: 4 
         }}>
           <Box>
-            <Typography variant="h4" component="h1" gutterBottom>
+            <Typography 
+              variant="h3" 
+              component="h1" 
+              sx={{ mb: 4 }}
+            >
               {modelConfig.name || modelConfig.modelName}
             </Typography>
             <Typography variant="subtitle1" color="textSecondary">
@@ -216,55 +302,280 @@ const ModelOverview = () => {
               </Box>
             </Paper>
 
-            {/* Test History Table */}
+            {/* Enhanced Test History Table */}
             <Paper sx={{ p: 3 }}>
-              <Typography variant="h6" gutterBottom>
-                Test History
-              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                <Typography variant="h6">
+                  Test History
+                </Typography>
+                
+                {/* Filters */}
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <FormControl size="small">
+                    <InputLabel>Status</InputLabel>
+                    <Select
+                      value={filters.status}
+                      onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
+                      label="Status"
+                    >
+                      <MenuItem value="all">All Status</MenuItem>
+                      <MenuItem value="passed">Passed</MenuItem>
+                      <MenuItem value="failed">Failed</MenuItem>
+                    </Select>
+                  </FormControl>
+                  
+                  <FormControl size="small">
+                    <InputLabel>Date Range</InputLabel>
+                    <Select
+                      value={filters.dateRange}
+                      onChange={(e) => setFilters(prev => ({ ...prev, dateRange: e.target.value }))}
+                      label="Date Range"
+                    >
+                      <MenuItem value="all">All Time</MenuItem>
+                      <MenuItem value="week">Last Week</MenuItem>
+                      <MenuItem value="month">Last Month</MenuItem>
+                    </Select>
+                  </FormControl>
+                  
+                  <FormControl size="small">
+                    <InputLabel>Score</InputLabel>
+                    <Select
+                      value={filters.score}
+                      onChange={(e) => setFilters(prev => ({ ...prev, score: e.target.value }))}
+                      label="Score"
+                    >
+                      <MenuItem value="all">All Scores</MenuItem>
+                      <MenuItem value="high">High (≥80%)</MenuItem>
+                      <MenuItem value="medium">Medium (50-79%)</MenuItem>
+                      <MenuItem value="low">Low (≤49%)</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+              </Box>
+
+              {/* Bulk Actions */}
+              {selectedRows.length > 0 && (
+                <Box sx={{ mb: 2 }}>
+                  <Paper
+                    sx={{
+                      p: 2,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 2,
+                      bgcolor: 'primary.lighter'
+                    }}
+                  >
+                    <Typography variant="body2">
+                      {selectedRows.length} items selected
+                    </Typography>
+                    <Button
+                      size="small"
+                      onClick={() => handleBulkAction('export')}
+                    >
+                      Export Selected
+                    </Button>
+                    <Button
+                      size="small"
+                      color="error"
+                      onClick={() => handleBulkAction('delete')}
+                    >
+                      Delete Selected
+                    </Button>
+                  </Paper>
+                </Box>
+              )}
+
               <TableContainer>
                 <Table>
                   <TableHead>
                     <TableRow>
-                      <TableCell>Date</TableCell>
-                      <TableCell>Overall Score</TableCell>
+                      <TableCell padding="checkbox">
+                        <Checkbox
+                          checked={selectedRows.length === getFilteredResults().length}
+                          indeterminate={selectedRows.length > 0 && selectedRows.length < getFilteredResults().length}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedRows(getFilteredResults().map(r => r.id));
+                            } else {
+                              setSelectedRows([]);
+                            }
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <TableSortLabel
+                          active={sortConfig.field === 'timestamp'}
+                          direction={sortConfig.field === 'timestamp' ? sortConfig.direction : 'asc'}
+                          onClick={() => handleSort('timestamp')}
+                        >
+                          Date
+                        </TableSortLabel>
+                      </TableCell>
+                      <TableCell>
+                        <TableSortLabel
+                          active={sortConfig.field === 'overallScore'}
+                          direction={sortConfig.field === 'overallScore' ? sortConfig.direction : 'asc'}
+                          onClick={() => handleSort('overallScore')}
+                        >
+                          Overall Score
+                        </TableSortLabel>
+                      </TableCell>
                       <TableCell>Tests Run</TableCell>
-                      <TableCell>Tests Passed</TableCell>
+                      <TableCell>Duration</TableCell>
+                      <TableCell>Status</TableCell>
                       <TableCell>Actions</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {testResults.slice().reverse().map((result) => (
-                      <TableRow key={result.id}>
-                        <TableCell>
-                          {new Date(result.timestamp).toLocaleString()}
-                        </TableCell>
-                        <TableCell>
-                          <Typography
-                            sx={{
-                              color: theme => {
-                                const score = result.results.overallScore;
-                                return score >= 80 ? theme.palette.success.main :
-                                       score >= 50 ? theme.palette.warning.main :
-                                       theme.palette.error.main;
-                              },
-                              fontWeight: 'bold'
-                            }}
+                    {getFilteredResults()
+                      .sort((a, b) => {
+                        const direction = sortConfig.direction === 'asc' ? 1 : -1;
+                        if (sortConfig.field === 'timestamp') {
+                          return direction * (new Date(a.timestamp) - new Date(b.timestamp));
+                        }
+                        if (sortConfig.field === 'overallScore') {
+                          return direction * (a.results.overallScore - b.results.overallScore);
+                        }
+                        return 0;
+                      })
+                      .map((result) => (
+                        <React.Fragment key={result.id}>
+                          <TableRow
+                            hover
+                            selected={selectedRows.includes(result.id)}
                           >
-                            {result.results.overallScore}%
-                          </Typography>
-                        </TableCell>
-                        <TableCell>{result.results.totalTests}</TableCell>
-                        <TableCell>{result.results.passedTests}</TableCell>
-                        <TableCell>
-                          <Button
-                            size="small"
-                            onClick={() => navigate('/results', { state: { testResult: result } })}
-                          >
-                            View Details
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                            <TableCell padding="checkbox">
+                              <Checkbox
+                                checked={selectedRows.includes(result.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedRows(prev => [...prev, result.id]);
+                                  } else {
+                                    setSelectedRows(prev => prev.filter(id => id !== result.id));
+                                  }
+                                }}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              {new Date(result.timestamp).toLocaleString()}
+                            </TableCell>
+                            <TableCell>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Typography
+                                  sx={{
+                                    color: theme => {
+                                      const score = result.results.overallScore;
+                                      return score >= 80 ? theme.palette.success.main :
+                                             score >= 50 ? theme.palette.warning.main :
+                                             theme.palette.error.main;
+                                    },
+                                    fontWeight: 'bold'
+                                  }}
+                                >
+                                  {result.results.overallScore.toFixed(1)}%
+                                </Typography>
+                                <IconButton
+                                  size="small"
+                                  onClick={() => setExpandedRow(expandedRow === result.id ? null : result.id)}
+                                >
+                                  {expandedRow === result.id ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+                                </IconButton>
+                              </Box>
+                            </TableCell>
+                            <TableCell>{result.results.totalTests}</TableCell>
+                            <TableCell>{result.duration || '2m 30s'}</TableCell>
+                            <TableCell>
+                              <Chip
+                                label={result.results.overallScore >= 80 ? 'Passed' : 'Failed'}
+                                color={result.results.overallScore >= 80 ? 'success' : 'error'}
+                                size="small"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Tooltip title="View Details">
+                                <IconButton size="small" onClick={() => setExpandedRow(expandedRow === result.id ? null : result.id)}>
+                                  <InfoIcon />
+                                </IconButton>
+                              </Tooltip>
+                            </TableCell>
+                          </TableRow>
+                          
+                          {/* Expandable Row */}
+                          <TableRow>
+                            <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={7}>
+                              <Collapse in={expandedRow === result.id} timeout="auto" unmountOnExit>
+                                <Box sx={{ margin: 2 }}>
+                                  <Typography variant="h6" gutterBottom component="div">
+                                    Test Details
+                                  </Typography>
+                                  
+                                  <Grid container spacing={3}>
+                                    {/* Category Scores */}
+                                    <Grid item xs={12} md={6}>
+                                      <Typography variant="subtitle2" gutterBottom>
+                                        Category Scores
+                                      </Typography>
+                                      {Object.entries(result.results.categoryScores || {}).map(([category, score]) => (
+                                        <Box key={category} sx={{ mb: 1 }}>
+                                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                                            <Typography variant="body2">{category}</Typography>
+                                            <Typography variant="body2">
+                                              {score.passed}/{score.total} ({((score.passed/score.total) * 100).toFixed(1)}%)
+                                            </Typography>
+                                          </Box>
+                                          <LinearProgress
+                                            variant="determinate"
+                                            value={(score.passed/score.total) * 100}
+                                            sx={{ height: 4, borderRadius: 1 }}
+                                          />
+                                        </Box>
+                                      ))}
+                                    </Grid>
+                                    
+                                    {/* Test Configuration */}
+                                    <Grid item xs={12} md={6}>
+                                      <Typography variant="subtitle2" gutterBottom>
+                                        Test Configuration
+                                      </Typography>
+                                      <TableContainer component={Paper} variant="outlined">
+                                        <Table size="small">
+                                          <TableBody>
+                                            {Object.entries(result.config || {}).map(([key, value]) => (
+                                              <TableRow key={key}>
+                                                <TableCell component="th" scope="row">
+                                                  {key}
+                                                </TableCell>
+                                                <TableCell>{value}</TableCell>
+                                              </TableRow>
+                                            ))}
+                                          </TableBody>
+                                        </Table>
+                                      </TableContainer>
+                                    </Grid>
+                                    
+                                    {/* Notes */}
+                                    <Grid item xs={12}>
+                                      <Typography variant="subtitle2" gutterBottom>
+                                        Notes
+                                      </Typography>
+                                      <TextField
+                                        fullWidth
+                                        multiline
+                                        rows={2}
+                                        placeholder="Add notes about this test run..."
+                                        value={result.notes || ''}
+                                        onChange={(e) => {
+                                          // Handle notes update
+                                        }}
+                                      />
+                                    </Grid>
+                                  </Grid>
+                                </Box>
+                              </Collapse>
+                            </TableCell>
+                          </TableRow>
+                        </React.Fragment>
+                      ))}
                   </TableBody>
                 </Table>
               </TableContainer>

@@ -1,7 +1,7 @@
 // API service using native fetch instead of axios
 
 // Use environment variable for API URL
-const API_URL = import.meta.env.VITE_API_URL || 'http://51.20.87.231:3001/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://13.48.48.75:3001/api';
 
 /**
  * Custom fetch wrapper with interceptors
