@@ -6,7 +6,8 @@
 import { API_URL } from './api';
 
 // Import the tests API URL for the test WebSocket
-const TESTS_API_URL = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
+const TESTS_API_URL = import.meta.env.VITE_TESTS_API_URL || 'https://16.171.112.40:8000';
+console.log('Using Tests API URL:', TESTS_API_URL);
 
 // Function to convert HTTP URL to WebSocket URL
 const getWebSocketURL = (httpUrl) => {
@@ -15,16 +16,18 @@ const getWebSocketURL = (httpUrl) => {
   // Create a URL object to parse the HTTP URL
   const url = new URL(httpUrl);
   
-  // Determine the WebSocket protocol (ws or wss)
-  const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  // Always use secure WebSocket protocol in production
+  const isProduction = import.meta.env.PROD;
+  const wsProtocol = isProduction || url.protocol === 'https:' ? 'wss:' : 'ws:';
   
   // Construct the WebSocket URL
-  // If it's an IP address with port, preserve the port
   const wsUrl = `${wsProtocol}//${url.hostname}${url.port ? ':' + url.port : ''}`;
   
   console.log('Converting HTTP URL to WebSocket URL:', {
     original: httpUrl,
-    converted: wsUrl
+    converted: wsUrl,
+    isProduction,
+    protocol: wsProtocol
   });
   
   return wsUrl;
@@ -35,6 +38,7 @@ const API_WS_URL = getWebSocketURL(API_URL);
 
 // Tests API WebSocket URL (port 8000)
 const TESTS_WS_URL = getWebSocketURL(TESTS_API_URL);
+console.log('Using Tests WebSocket URL:', TESTS_WS_URL);
 
 class WebSocketService {
   constructor() {
@@ -68,7 +72,7 @@ class WebSocketService {
     return new Promise((resolve, reject) => {
       try {
         // Use the correct WebSocket endpoint format based on whether we have a taskId
-        const wsUrl = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
+        const wsUrl = import.meta.env.VITE_TESTS_API_URL || 'https://16.171.112.40:8000';
         let wsEndpoint;
         
         if (taskId) {

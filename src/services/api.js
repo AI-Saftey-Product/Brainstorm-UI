@@ -1,7 +1,63 @@
 // API service using native fetch instead of axios
 
 // Use environment variable for API URL
-export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+export const API_URL = import.meta.env.VITE_API_URL || 'https://16.171.112.40:3001/api';
+console.log('Using API URL:', API_URL);
+
+// Function to ensure URL has the correct protocol
+const getSecureUrl = (url) => {
+  const isProduction = import.meta.env.PROD;
+  
+  // If it's a relative URL, just return it
+  if (url.startsWith('/')) {
+    return url;
+  }
+  
+  // Force HTTPS in production
+  if (isProduction && url.startsWith('http:')) {
+    return url.replace('http:', 'https:');
+  }
+  
+  return url;
+};
+
+// Generic fetch function with error handling
+export const fetchApi = async (url, options = {}) => {
+  try {
+    const secureUrl = getSecureUrl(url);
+    console.log('Fetching API:', {
+      originalUrl: url,
+      secureUrl,
+      method: options.method || 'GET'
+    });
+    
+    const fetchOptions = {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    };
+    
+    const response = await fetch(secureUrl, fetchOptions);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('API request failed:', error);
+    throw error;
+  }
+};
+
+// Export a configured fetch function that includes the API URL
+export const apiFetch = async (path, options = {}) => {
+  const url = path.startsWith('http') ? path : `${API_URL}${path}`;
+  return fetchApi(url, options);
+};
 
 /**
  * Custom fetch wrapper with interceptors

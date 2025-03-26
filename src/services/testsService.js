@@ -3,7 +3,7 @@
  * Handles test operations and execution
  */
 
-const API_BASE_URL = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_TESTS_API_URL || 'https://16.171.112.40:8000';
 console.log('Using Tests API Base URL:', API_BASE_URL);
 
 // Default fetch options for all API calls
@@ -23,11 +23,30 @@ const testResultsCache = new Map();
 let consecutiveIdenticalResults = 0;
 const MAX_IDENTICAL_RESULTS = 2;
 
-// Function to ensure URL has the correct format
+// Function to ensure URL has the correct format and protocol
 const getApiUrl = (path) => {
-  const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
+  // Ensure we're using HTTPS in production
+  const isProduction = import.meta.env.PROD;
+  let baseUrl = API_BASE_URL;
+  
+  // Force HTTPS in production
+  if (isProduction && baseUrl.startsWith('http:')) {
+    baseUrl = baseUrl.replace('http:', 'https:');
+  }
+  
+  // Clean up the URL
+  baseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
-  return `${baseUrl}${cleanPath}`;
+  
+  const fullUrl = `${baseUrl}${cleanPath}`;
+  console.log('Generated API URL:', {
+    baseUrl,
+    path,
+    fullUrl,
+    isProduction
+  });
+  
+  return fullUrl;
 };
 
 /**
@@ -356,7 +375,7 @@ export const getTestResults = async (taskId) => {
     }
     
     // Use API_BASE_URL from environment or fallback to default
-    const API_URL = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
+    const API_URL = import.meta.env.VITE_TESTS_API_URL || 'https://16.171.112.40:8000';
     console.log('Using API URL:', API_URL);
     
     // Updated to use the correct endpoint URL pattern with PATH parameter (not query parameter)
