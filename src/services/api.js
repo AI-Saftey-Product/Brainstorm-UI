@@ -1,25 +1,20 @@
-// API service using native fetch instead of axios
+/**
+ * API Service
+ * Handles API requests and responses
+ */
 
 // Use environment variable for API URL
-export const API_URL = import.meta.env.VITE_API_URL || 'https://16.171.112.40:3001/api';
+const API_URL = import.meta.env.VITE_API_URL || 'https://16.171.112.40/api';
 console.log('Using API URL:', API_URL);
 
-// Function to ensure URL has the correct protocol
-const getSecureUrl = (url) => {
+// Function to ensure HTTPS in production
+function getSecureUrl(url) {
   const isProduction = import.meta.env.PROD;
-  
-  // If it's a relative URL, just return it
-  if (url.startsWith('/')) {
-    return url;
-  }
-  
-  // Force HTTPS in production
   if (isProduction && url.startsWith('http:')) {
     return url.replace('http:', 'https:');
   }
-  
   return url;
-};
+}
 
 // Generic fetch function with error handling
 export const fetchApi = async (url, options = {}) => {

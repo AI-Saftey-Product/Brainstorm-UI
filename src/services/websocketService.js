@@ -4,34 +4,24 @@
  */
 
 import { API_URL } from './api';
+import { Subject } from 'rxjs';
 
 // Import the tests API URL for the test WebSocket
-const TESTS_API_URL = import.meta.env.VITE_TESTS_API_URL || 'https://16.171.112.40:8000';
+const TESTS_API_URL = import.meta.env.VITE_TESTS_API_URL || 'https://16.171.112.40';
 console.log('Using Tests API URL:', TESTS_API_URL);
 
 // Function to convert HTTP URL to WebSocket URL
-const getWebSocketURL = (httpUrl) => {
-  if (!httpUrl) return null;
-  
-  // Create a URL object to parse the HTTP URL
-  const url = new URL(httpUrl);
-  
-  // Always use secure WebSocket protocol in production
+function getWebSocketURL(url) {
+  console.log('Converting URL to WebSocket URL:', url);
   const isProduction = import.meta.env.PROD;
-  const wsProtocol = isProduction || url.protocol === 'https:' ? 'wss:' : 'ws:';
+  console.log('Is Production:', isProduction);
   
-  // Construct the WebSocket URL
-  const wsUrl = `${wsProtocol}//${url.hostname}${url.port ? ':' + url.port : ''}`;
-  
-  console.log('Converting HTTP URL to WebSocket URL:', {
-    original: httpUrl,
-    converted: wsUrl,
-    isProduction,
-    protocol: wsProtocol
-  });
+  // Replace http(s):// with ws(s)://
+  const wsUrl = url.replace(/^http/, 'ws');
+  console.log('Converted WebSocket URL:', wsUrl);
   
   return wsUrl;
-};
+}
 
 // Main API WebSocket URL (port 3001)
 const API_WS_URL = getWebSocketURL(API_URL);
@@ -72,7 +62,7 @@ class WebSocketService {
     return new Promise((resolve, reject) => {
       try {
         // Use the correct WebSocket endpoint format based on whether we have a taskId
-        const wsUrl = import.meta.env.VITE_TESTS_API_URL || 'https://16.171.112.40:8000';
+        const wsUrl = import.meta.env.VITE_TESTS_API_URL || 'https://16.171.112.40';
         let wsEndpoint;
         
         if (taskId) {

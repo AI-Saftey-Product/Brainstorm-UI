@@ -3,7 +3,7 @@
  * Handles test operations and execution
  */
 
-const API_BASE_URL = import.meta.env.VITE_TESTS_API_URL || 'https://16.171.112.40:8000';
+const API_BASE_URL = import.meta.env.VITE_TESTS_API_URL || 'https://16.171.112.40';
 console.log('Using Tests API Base URL:', API_BASE_URL);
 
 // Default fetch options for all API calls
@@ -375,7 +375,7 @@ export const getTestResults = async (taskId) => {
     }
     
     // Use API_BASE_URL from environment or fallback to default
-    const API_URL = import.meta.env.VITE_TESTS_API_URL || 'https://16.171.112.40:8000';
+    const API_URL = import.meta.env.VITE_TESTS_API_URL || 'https://16.171.112.40';
     console.log('Using API URL:', API_URL);
     
     // Updated to use the correct endpoint URL pattern with PATH parameter (not query parameter)
