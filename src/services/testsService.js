@@ -6,11 +6,10 @@
 const API_BASE_URL = import.meta.env.VITE_TESTS_API_URL || 'https://16.171.112.40';
 console.log('Using Tests API Base URL:', API_BASE_URL);
 
-// Default fetch options with SSL certificate bypass
+// Default fetch options for browser
 const defaultFetchOptions = {
   mode: 'cors',
   credentials: 'include',
-  rejectUnauthorized: false,
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'
@@ -50,7 +49,7 @@ const getApiUrl = (path) => {
   return fullUrl;
 };
 
-// Function to make API requests with certificate bypass
+// Function to make API requests
 const makeRequest = async (url, options = {}) => {
   const fetchOptions = {
     ...defaultFetchOptions,
@@ -66,13 +65,22 @@ const makeRequest = async (url, options = {}) => {
     options: fetchOptions
   });
 
-  const response = await fetch(url, fetchOptions);
-  
-  if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
+  try {
+    const response = await fetch(url, fetchOptions);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error response from API:', errorText);
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    return response.json();
+  } catch (error) {
+    if (error.message.includes('ERR_CERT_AUTHORITY_INVALID')) {
+      console.warn('Certificate validation failed. Please accept the certificate in your browser or contact the administrator to set up proper SSL certificates.');
+    }
+    throw error;
   }
-  
-  return response.json();
 };
 
 /**
@@ -92,17 +100,7 @@ const formatModelType = (modelType) => {
 export const getAllTests = async () => {
   try {
     console.log('Fetching all tests from backend');
-    const response = await fetch(`${API_BASE_URL}/api/tests/model-tests`, defaultFetchOptions);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error response from API:', errorText);
-      throw new Error(`Failed to fetch tests: ${response.status} ${response.statusText}`);
-    }
-    
-    const data = await response.json();
-    console.log('Received tests data from backend:', data);
-    return data;
+    return await makeRequest(`${API_BASE_URL}/api/tests/model-tests`);
   } catch (error) {
     console.error('Error fetching tests:', error);
     throw error;
@@ -118,27 +116,10 @@ export const getTestsByCategory = async (category) => {
   try {
     console.log(`Fetching tests for category "${category}" from backend`);
     
-    // Use model-tests endpoint with category filter
     const params = new URLSearchParams();
     params.append('category', category);
     
-    const response = await fetch(`${API_BASE_URL}/api/tests/model-tests?${params.toString()}`, defaultFetchOptions);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error response from API:', errorText);
-      throw new Error(`Failed to fetch tests by category: ${response.status} ${response.statusText}`);
-    }
-    
-    const data = await response.json();
-    console.log(`Received tests for category "${category}" from backend:`, data);
-    
-    // Return the tests as an array
-    if (data && data.tests) {
-      return Object.values(data.tests);
-    }
-    
-    return [];
+    return await makeRequest(`${API_BASE_URL}/api/tests/model-tests?${params.toString()}`);
   } catch (error) {
     console.error(`Error fetching tests for category "${category}":`, error);
     return [];
@@ -174,53 +155,30 @@ export const runTests = async (testIds, modelConfig, testParameters = {}, logCal
     log(`Selected tests: ${testIds.length}`);
     log(`Model: ${modelConfig.name || modelConfig.modelName}`);
 
-    // Format payload to match API expectations
     const payload = {
-      // Use test_ids instead of tests
       test_ids: testIds,
-      
-      // Use model_settings instead of model
       model_settings: {
-        // Only include fields expected by the API
         model_id: modelConfig.model_id || modelConfig.modelId || modelConfig.selectedModel || '',
         modality: modelConfig.modality || modelConfig.modelCategory || 'NLP',
         sub_type: modelConfig.sub_type || modelConfig.modelType || '',
         source: modelConfig.source || 'huggingface',
         api_key: modelConfig.api_key || modelConfig.apiKey || ''
-        // name field is not used in the API
       },
-      
-      // Use parameters for test-specific parameters
       parameters: { ...testParameters }
     };
 
-    // Add test_run_id if provided to the root of the payload
     if (testParameters && testParameters.test_run_id) {
-      log(`Using provided test run ID: ${testParameters.test_run_id}`);
       payload.test_run_id = testParameters.test_run_id;
-      // Remove from parameters to avoid duplication
       delete payload.parameters.test_run_id;
     }
 
     log('Sending request to API...');
     console.log('Request payload:', payload);
 
-    const response = await fetch(getApiUrl('/api/tests/run'), {
+    const data = await makeRequest(getApiUrl('/api/tests/run'), {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify(payload)
     });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `API request failed with status ${response.status}`);
-    }
-
-    const data = await response.json();
-    log('API response received');
-    console.log('Response:', data);
 
     if (data && (data.task_id || data.test_run_id)) {
       const taskId = data.task_id || data.test_run_id;
@@ -243,12 +201,9 @@ export const runTests = async (testIds, modelConfig, testParameters = {}, logCal
 export const getFilteredTests = async (modelConfig) => {
   try {
     console.log('getFilteredTests called with:', modelConfig);
-    console.log('Using API base URL:', API_BASE_URL);
     
-    // Ensure we have at least one required parameter
     if (!modelConfig || (!modelConfig.modality && !modelConfig.model_type)) {
       console.warn('No model parameters provided for filtering tests. Using defaults.');
-      // Default to NLP and Text Generation if nothing provided
       modelConfig = {
         modality: 'NLP',
         model_type: 'Text Generation',
@@ -256,7 +211,6 @@ export const getFilteredTests = async (modelConfig) => {
       };
     }
     
-    // Build the query parameters based on model properties
     const params = new URLSearchParams();
     if (modelConfig.modality) {
       params.append('modality', modelConfig.modality);
@@ -267,39 +221,14 @@ export const getFilteredTests = async (modelConfig) => {
 
     const url = `${API_BASE_URL}/api/tests/model-tests?${params.toString()}`;
     console.log('Fetching filtered tests from backend URL:', url);
-    console.log('Using fetch options:', defaultFetchOptions);
     
-    // Use the correct API endpoint for model-specific tests
-    const response = await fetch(url, defaultFetchOptions);
-    console.log('Response status:', response.status);
-    console.log('Response headers:', Object.fromEntries([...response.headers.entries()]));
+    const data = await makeRequest(url);
     
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Error ${response.status} response from API:`, errorText);
-      console.error('Request URL:', url);
-      console.error('Request options:', defaultFetchOptions);
-      
-      if (response.status === 422) {
-        console.error('Unprocessable Content Error. API parameters may be incorrect.', modelConfig);
-        // Return empty array instead of throwing to prevent blocking the UI
-        return [];
-      }
-      
-      throw new Error(`Failed to fetch filtered tests: ${response.status} ${response.statusText}`);
-    }
-    
-    const data = await response.json();
-    console.log('Received filtered tests data from backend:', data);
-    
-    // Transform the response to array format for the UI
     if (data && data.tests) {
-      // Convert the tests object to an array
       const testsArray = Object.values(data.tests);
       console.log('Converted tests to array format, count:', testsArray.length);
       return testsArray;
     } else if (Array.isArray(data)) {
-      // Already in array format
       console.log('Data is already in array format, count:', data.length);
       return data;
     } else {
@@ -309,7 +238,6 @@ export const getFilteredTests = async (modelConfig) => {
   } catch (error) {
     console.error('Error in getFilteredTests:', error);
     console.error('Model config that caused error:', modelConfig);
-    console.error('API base URL:', API_BASE_URL);
     throw error;
   }
 };
@@ -321,33 +249,7 @@ export const getFilteredTests = async (modelConfig) => {
 export const getTestCategories = async () => {
   try {
     console.log('Fetching test categories from backend');
-    const response = await fetch(`${API_BASE_URL}/api/tests/categories`, defaultFetchOptions);
-    
-    if (response.ok) {
-      const data = await response.json();
-      console.log('Received categories from backend:', data);
-      return data;
-    } else {
-      console.log('Categories endpoint not available, deriving from tests');
-      
-      // If categories endpoint fails, fall back to deriving from tests
-      const allTestsData = await getAllTests();
-      
-      if (allTestsData && allTestsData.tests) {
-        // Extract unique categories from tests
-        const testsArray = Object.values(allTestsData.tests);
-        const categories = [...new Set(testsArray.map(test => test.category))];
-        console.log('Derived categories from tests:', categories);
-        return categories;
-      } else if (Array.isArray(allTestsData)) {
-        // Handle case where tests are returned as an array
-        const categories = [...new Set(allTestsData.map(test => test.category))];
-        console.log('Derived categories from tests array:', categories);
-        return categories;
-      }
-      
-      throw new Error('Could not derive categories from tests');
-    }
+    return await makeRequest(`${API_BASE_URL}/api/tests/categories`);
   } catch (error) {
     console.error('Error fetching test categories:', error);
     throw error;
