@@ -4,6 +4,7 @@
  */
 
 const API_BASE_URL = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
+console.log('Using Tests API Base URL:', API_BASE_URL);
 
 // Default fetch options for all API calls
 const fetchOptions = {
@@ -21,6 +22,13 @@ const testResultsCache = new Map();
 // Add a count for consecutive identical results
 let consecutiveIdenticalResults = 0;
 const MAX_IDENTICAL_RESULTS = 2;
+
+// Function to ensure URL has the correct format
+const getApiUrl = (path) => {
+  const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  return `${baseUrl}${cleanPath}`;
+};
 
 /**
  * Format model type to be lowercase with underscores
@@ -152,7 +160,7 @@ export const runTests = async (testIds, modelConfig, testParameters = {}, logCal
     log('Sending request to API...');
     console.log('Request payload:', payload);
 
-    const response = await fetch(`${API_BASE_URL}/api/tests/run`, {
+    const response = await fetch(getApiUrl('/api/tests/run'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -355,7 +363,12 @@ export const getTestResults = async (taskId) => {
     const resultsEndpoint = `${API_URL}/api/tests/results/${taskId}`;
     console.log('Fetching results from:', resultsEndpoint);
     
-    const response = await fetch(resultsEndpoint, fetchOptions);
+    const response = await fetch(getApiUrl(`/api/tests/results/${taskId}`), {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    });
     
     if (!response.ok) {
       const errorText = await response.text();

@@ -8,9 +8,26 @@ import { API_URL } from './api';
 // Import the tests API URL for the test WebSocket
 const TESTS_API_URL = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
 
-// Convert HTTP URL to WebSocket URL and remove /api suffix
-const getWebSocketURL = (baseURL) => {
-  return baseURL.replace(/^http/, 'ws').replace(/\/api$/, '');
+// Function to convert HTTP URL to WebSocket URL
+const getWebSocketURL = (httpUrl) => {
+  if (!httpUrl) return null;
+  
+  // Create a URL object to parse the HTTP URL
+  const url = new URL(httpUrl);
+  
+  // Determine the WebSocket protocol (ws or wss)
+  const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  
+  // Construct the WebSocket URL
+  // If it's an IP address with port, preserve the port
+  const wsUrl = `${wsProtocol}//${url.hostname}${url.port ? ':' + url.port : ''}`;
+  
+  console.log('Converting HTTP URL to WebSocket URL:', {
+    original: httpUrl,
+    converted: wsUrl
+  });
+  
+  return wsUrl;
 };
 
 // Main API WebSocket URL (port 3001)
