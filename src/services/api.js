@@ -32,6 +32,10 @@ export const fetchApi = async (url, options = {}) => {
         'Content-Type': 'application/json',
         ...options.headers,
       },
+      // Bypass SSL certificate verification (only for development)
+      mode: 'cors',
+      credentials: 'include',
+      rejectUnauthorized: false,
     };
     
     const response = await fetch(secureUrl, fetchOptions);
@@ -75,6 +79,10 @@ const api = {
     const fetchOptions = {
       ...options,
       headers,
+      // Bypass SSL certificate verification (only for development)
+      mode: 'cors',
+      credentials: 'include',
+      rejectUnauthorized: false,
     };
 
     try {

@@ -72,7 +72,19 @@ class WebSocketService {
           console.log('Connecting to WebSocket to get a new test run ID:', wsEndpoint);
         }
         
-        this.ws = new WebSocket(wsEndpoint);
+        // Create WebSocket connection with certificate verification bypass
+        this.ws = new WebSocket(wsEndpoint, [], {
+          rejectUnauthorized: false,
+          headers: {
+            'Origin': window.location.origin
+          }
+        });
+        
+        // Add error handling for certificate errors
+        this.ws.addEventListener('error', (error) => {
+          console.warn('WebSocket SSL Certificate Error:', error);
+          // Continue despite certificate errors
+        });
         
         this.ws.onopen = () => {
           console.log('WebSocket connection established');

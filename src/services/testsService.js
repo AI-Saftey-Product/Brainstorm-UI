@@ -6,10 +6,11 @@
 const API_BASE_URL = import.meta.env.VITE_TESTS_API_URL || 'https://16.171.112.40';
 console.log('Using Tests API Base URL:', API_BASE_URL);
 
-// Default fetch options for all API calls
-const fetchOptions = {
+// Default fetch options with SSL certificate bypass
+const defaultFetchOptions = {
   mode: 'cors',
   credentials: 'include',
+  rejectUnauthorized: false,
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'
@@ -49,6 +50,31 @@ const getApiUrl = (path) => {
   return fullUrl;
 };
 
+// Function to make API requests with certificate bypass
+const makeRequest = async (url, options = {}) => {
+  const fetchOptions = {
+    ...defaultFetchOptions,
+    ...options,
+    headers: {
+      ...defaultFetchOptions.headers,
+      ...options.headers
+    }
+  };
+
+  console.log('Making API request:', {
+    url,
+    options: fetchOptions
+  });
+
+  const response = await fetch(url, fetchOptions);
+  
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+  
+  return response.json();
+};
+
 /**
  * Format model type to be lowercase with underscores
  * @param {string} modelType - The model type to format
@@ -66,7 +92,7 @@ const formatModelType = (modelType) => {
 export const getAllTests = async () => {
   try {
     console.log('Fetching all tests from backend');
-    const response = await fetch(`${API_BASE_URL}/api/tests/model-tests`, fetchOptions);
+    const response = await fetch(`${API_BASE_URL}/api/tests/model-tests`, defaultFetchOptions);
     
     if (!response.ok) {
       const errorText = await response.text();
@@ -96,7 +122,7 @@ export const getTestsByCategory = async (category) => {
     const params = new URLSearchParams();
     params.append('category', category);
     
-    const response = await fetch(`${API_BASE_URL}/api/tests/model-tests?${params.toString()}`, fetchOptions);
+    const response = await fetch(`${API_BASE_URL}/api/tests/model-tests?${params.toString()}`, defaultFetchOptions);
     
     if (!response.ok) {
       const errorText = await response.text();
@@ -241,10 +267,10 @@ export const getFilteredTests = async (modelConfig) => {
 
     const url = `${API_BASE_URL}/api/tests/model-tests?${params.toString()}`;
     console.log('Fetching filtered tests from backend URL:', url);
-    console.log('Using fetch options:', fetchOptions);
+    console.log('Using fetch options:', defaultFetchOptions);
     
     // Use the correct API endpoint for model-specific tests
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(url, defaultFetchOptions);
     console.log('Response status:', response.status);
     console.log('Response headers:', Object.fromEntries([...response.headers.entries()]));
     
@@ -252,7 +278,7 @@ export const getFilteredTests = async (modelConfig) => {
       const errorText = await response.text();
       console.error(`Error ${response.status} response from API:`, errorText);
       console.error('Request URL:', url);
-      console.error('Request options:', fetchOptions);
+      console.error('Request options:', defaultFetchOptions);
       
       if (response.status === 422) {
         console.error('Unprocessable Content Error. API parameters may be incorrect.', modelConfig);
@@ -295,7 +321,7 @@ export const getFilteredTests = async (modelConfig) => {
 export const getTestCategories = async () => {
   try {
     console.log('Fetching test categories from backend');
-    const response = await fetch(`${API_BASE_URL}/api/tests/categories`, fetchOptions);
+    const response = await fetch(`${API_BASE_URL}/api/tests/categories`, defaultFetchOptions);
     
     if (response.ok) {
       const data = await response.json();
