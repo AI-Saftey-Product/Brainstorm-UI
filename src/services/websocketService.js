@@ -3,7 +3,6 @@
  * Provides WebSocket connection functionality for real-time updates
  */
 
-import { API_URL } from './api';
 import { Subject } from 'rxjs';
 
 // Import the tests API URL for the test WebSocket
@@ -23,10 +22,7 @@ function getWebSocketURL(url) {
   return wsUrl;
 }
 
-// Main API WebSocket URL (port 3001)
-const API_WS_URL = getWebSocketURL(API_URL);
-
-// Tests API WebSocket URL (port 8000)
+// Tests API WebSocket URL
 const TESTS_WS_URL = getWebSocketURL(TESTS_API_URL);
 console.log('Using Tests WebSocket URL:', TESTS_WS_URL);
 

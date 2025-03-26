@@ -4,7 +4,7 @@
  */
 
 // Use environment variable for API URL
-const API_URL = import.meta.env.VITE_API_URL || 'https://16.171.112.40/api';
+export const API_URL = import.meta.env.VITE_API_URL || 'https://16.171.112.40/api';
 console.log('Using API URL:', API_URL);
 
 // Function to ensure HTTPS in production
