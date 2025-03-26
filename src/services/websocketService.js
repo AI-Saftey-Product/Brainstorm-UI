@@ -3,114 +3,163 @@
  * Provides WebSocket connection functionality for real-time updates
  */
 
-// WebSocket endpoint URL
-const WS_URL = 'ws://51.20.87.231:8000/ws/tests/';
+import { API_URL } from './api';
+
+// Import the tests API URL for the test WebSocket
+const TESTS_API_URL = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
+
+// Convert HTTP URL to WebSocket URL and remove /api suffix
+const getWebSocketURL = (baseURL) => {
+  return baseURL.replace(/^http/, 'ws').replace(/\/api$/, '');
+};
+
+// Main API WebSocket URL (port 3001)
+const API_WS_URL = getWebSocketURL(API_URL);
+
+// Tests API WebSocket URL (port 8000)
+const TESTS_WS_URL = getWebSocketURL(TESTS_API_URL);
 
 class WebSocketService {
   constructor() {
-    this.socket = null;
-    this.listeners = {
+    this.eventListeners = {
       'test_status_update': [],
       'test_result': [],
       'test_complete': [],
       'test_failed': [],
       'message': [],
       'error': [],
-      'close': []
+      'close': [],
+      'connection': [],
+      'connection_established': [],
+      'raw_message': []  // New event type for raw message data
     };
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
     this.reconnectTimeout = null;
+    this.connected = false;
   }
 
   /**
-   * Connect to the WebSocket server and subscribe to a specific task
-   * @param {string} taskId - The task ID to subscribe to
-   * @returns {Promise<boolean>} - Whether the connection was successful
+   * Connect to the WebSocket server and subscribe to a specific task or get a new test run ID
+   * @param {string} [taskId] - Optional taskId. If omitted, will connect to get a new test run ID
+   * @returns {Promise} - A promise that resolves when connection is established
    */
   connect(taskId) {
+    // Close any existing connection
+    this.disconnect();
+    
     return new Promise((resolve, reject) => {
       try {
-        // Close any existing connection
-        if (this.socket) {
-          this.socket.close();
+        // Use the correct WebSocket endpoint format based on whether we have a taskId
+        const wsUrl = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
+        let wsEndpoint;
+        
+        if (taskId) {
+          // If we have a taskId, connect to the specific test run
+          const taskIdStr = String(taskId);
+          wsEndpoint = `${wsUrl.replace(/^http/, 'ws')}/ws/tests/${taskIdStr}`;
+          console.log('Connecting to WebSocket with existing task ID:', wsEndpoint);
+        } else {
+          // If no taskId, connect to get a new test run ID
+          wsEndpoint = `${wsUrl.replace(/^http/, 'ws')}/ws/tests`;
+          console.log('Connecting to WebSocket to get a new test run ID:', wsEndpoint);
         }
-
-        // Create new WebSocket connection
-        this.socket = new WebSocket(`${WS_URL}${taskId}`);
-
-        // Set up event handlers
-        this.socket.onopen = () => {
-          console.log('WebSocket connection established for task:', taskId);
-          this.reconnectAttempts = 0;
-          resolve(true);
+        
+        this.ws = new WebSocket(wsEndpoint);
+        
+        this.ws.onopen = () => {
+          console.log('WebSocket connection established');
+          this.connected = true;
+          
+          if (taskId) {
+            this.notifyListeners('connection_established', { taskId: String(taskId) });
+            resolve({ taskId: String(taskId) });
+          } else {
+            // When connecting without a taskId, we expect the server to send us a test run ID
+            // This will be handled in the onmessage handler
+            console.log('WebSocket connection established, waiting for test run ID...');
+          }
         };
-
-        this.socket.onmessage = (event) => {
+        
+        this.ws.onmessage = (event) => {
+          console.log('Raw WebSocket message received:', event.data);
+          
+          // First, emit the raw message event with the raw data
+          this.notifyListeners('raw_message', event.data);
+          
           try {
+            // Try to parse the message as JSON
             const data = JSON.parse(event.data);
-            console.log('WebSocket message received:', data);
+            console.log('Parsed WebSocket message:', data);
             
-            // Handle different message types using switch as in the example
-            if (data.type) {
-              switch(data.type) {
-                case 'test_status_update':
-                  this.notifyListeners('test_status_update', data);
-                  break;
-                  
-                case 'test_result':
-                  this.notifyListeners('test_result', data);
-                  break;
-                  
-                case 'test_complete':
-                  this.notifyListeners('test_complete', data);
-                  break;
-                  
-                case 'test_failed':
-                  this.notifyListeners('test_failed', data);
-                  break;
-                  
-                default:
-                  // For any other message types
-                  console.log('Unhandled message type:', data.type);
-                  break;
-              }
+            // Always emit a generic 'message' event with the full data
+            this.notifyListeners('message', data);
+            
+            // If we're waiting for a test run ID (no taskId was provided)
+            if (!taskId && (data.test_run_id || data.id)) {
+              const testRunId = data.test_run_id || data.id;
+              console.log('Received test run ID from server:', testRunId);
+              this.notifyListeners('test_run_id', { test_run_id: testRunId });
+              resolve({ test_run_id: testRunId });
             }
             
-            // Always notify generic message listeners
-            this.notifyListeners('message', data);
+            // Then check for a message type and emit a specific event if present
+            if (data.type) {
+              console.log(`Processing message of type: ${data.type}`);
+              this.notifyListeners(data.type, data);
+            } else {
+              console.log('No message type found in WebSocket message');
+            }
           } catch (error) {
-            console.error('Error processing WebSocket message:', error);
-            console.error('Raw message:', event.data);
+            console.error('Error parsing WebSocket message:', error);
+            
+            // If parsing fails, still emit the message event with the raw data
+            this.notifyListeners('message', event.data);
+            
+            // If we're waiting for a test run ID and encounter an error, try to extract from raw data
+            if (!taskId) {
+              const rawData = event.data;
+              if (typeof rawData === 'string') {
+                // Try to extract test_run_id using regex
+                const match = rawData.match(/test_run_id[\":][\"\s]*([a-zA-Z0-9-_]+)/);
+                if (match && match[1]) {
+                  const extractedId = match[1].replace(/[\"']/g, '');
+                  console.log('Extracted test run ID from raw message:', extractedId);
+                  this.notifyListeners('test_run_id', { test_run_id: extractedId });
+                  resolve({ test_run_id: extractedId });
+                }
+              }
+            }
           }
         };
-
-        this.socket.onerror = (error) => {
+        
+        this.ws.onerror = (error) => {
           console.error('WebSocket error:', error);
+          this.connected = false;
           this.notifyListeners('error', error);
+          reject(error);
         };
-
-        this.socket.onclose = (event) => {
+        
+        this.ws.onclose = (event) => {
           console.log('WebSocket connection closed:', event);
+          this.connected = false;
           this.notifyListeners('close', event);
           
-          // Attempt to reconnect if not closed cleanly
-          if (!event.wasClean && this.reconnectAttempts < this.maxReconnectAttempts) {
-            this.reconnectAttempts++;
-            console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
-            
-            this.reconnectTimeout = setTimeout(() => {
-              this.connect(taskId).catch(console.error);
-            }, 1000 * this.reconnectAttempts);
-          }
-          
-          if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            console.error('Maximum reconnection attempts reached');
-            reject(new Error('Maximum reconnection attempts reached'));
+          // Only reject if we're still waiting for a test run ID
+          if (!taskId && !event.wasClean) {
+            reject(new Error('WebSocket connection closed before receiving test run ID'));
           }
         };
+        
+        // Set a timeout for getting the test run ID
+        if (!taskId) {
+          setTimeout(() => {
+            reject(new Error('Timeout waiting for test run ID'));
+          }, 10000);
+        }
       } catch (error) {
-        console.error('Error establishing WebSocket connection:', error);
+        console.error('Error creating WebSocket connection:', error);
+        this.notifyListeners('error', error);
         reject(error);
       }
     });
@@ -122,8 +171,8 @@ class WebSocketService {
    * @param {any} data - Event data
    */
   notifyListeners(type, data) {
-    if (this.listeners[type]) {
-      this.listeners[type].forEach(callback => {
+    if (this.eventListeners[type]) {
+      this.eventListeners[type].forEach(callback => {
         try {
           callback(data);
         } catch (error) {
@@ -140,10 +189,10 @@ class WebSocketService {
    */
   on(type, callback) {
     if (typeof callback === 'function') {
-      if (!this.listeners[type]) {
-        this.listeners[type] = [];
+      if (!this.eventListeners[type]) {
+        this.eventListeners[type] = [];
       }
-      this.listeners[type].push(callback);
+      this.eventListeners[type].push(callback);
     }
     return this; // For method chaining
   }
@@ -154,8 +203,8 @@ class WebSocketService {
    * @param {Function} callback - Callback to remove
    */
   off(type, callback) {
-    if (this.listeners[type]) {
-      this.listeners[type] = this.listeners[type].filter(cb => cb !== callback);
+    if (this.eventListeners[type]) {
+      this.eventListeners[type] = this.eventListeners[type].filter(cb => cb !== callback);
     }
     return this;
   }
@@ -177,20 +226,39 @@ class WebSocketService {
    * Close the WebSocket connection
    */
   disconnect() {
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
-      this.reconnectTimeout = null;
+    if (this.ws) {
+      // Only close if we're actually connected
+      if (this.connected) {
+        this.ws.close(1000, 'Normal closure');
+        this.connected = false;
+        console.log('WebSocket disconnected, listeners will be preserved for reconnection');
+      }
+      this.ws = null;
     }
-    
-    if (this.socket) {
-      this.socket.close();
-      this.socket = null;
+  }
+
+  /**
+   * Reset and disconnect WebSocket, clearing all listeners
+   */
+  reset() {
+    // Only disconnect if we have an active connection
+    if (this.connected) {
+      this.disconnect();
     }
-    
     // Clear all listeners
-    Object.keys(this.listeners).forEach(type => {
-      this.listeners[type] = [];
-    });
+    this.eventListeners = {
+      'test_status_update': [],
+      'test_result': [],
+      'test_complete': [],
+      'test_failed': [],
+      'message': [],
+      'error': [],
+      'close': [],
+      'connection': [],
+      'connection_established': [],
+      'raw_message': []  // New event type for raw message data
+    };
+    console.log('WebSocket service completely reset, all listeners cleared');
   }
 
   /**
@@ -199,6 +267,14 @@ class WebSocketService {
    */
   isConnected() {
     return this.socket && this.socket.readyState === WebSocket.OPEN;
+  }
+
+  // Helper method to get WebSocket URL from API URL
+  getWebSocketURL(apiUrl) {
+    if (!apiUrl) return null;
+    
+    // Convert http(s):// to ws(s)://
+    return apiUrl.replace(/^http/, 'ws').replace(/\/api$/, '');
   }
 }
 

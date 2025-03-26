@@ -21,6 +21,7 @@ import {
   TextField,
   InputAdornment,
   Tooltip,
+  Button,
 } from '@mui/material';
 import {
   Radar,
@@ -192,18 +193,18 @@ const ResultsPage = () => {
   
   // If no tests selected, show warning
   if (!selectedTests || selectedTests.length === 0) {
-    return (
+      return (
       <PageLayout title="Compliance Results Dashboard">
         <Alert severity="warning" sx={{ mb: 3 }}>
           No tests have been selected yet. Please configure and run tests to see results.
         </Alert>
-        <Button 
-          variant="contained" 
-          color="primary" 
+          <Button 
+            variant="contained" 
+            color="primary" 
           onClick={() => navigate('/test-config')}
-        >
+          >
           Go to Test Configuration
-        </Button>
+          </Button>
       </PageLayout>
     );
   }
@@ -246,8 +247,8 @@ const ResultsPage = () => {
   const handleCompareRuns = () => {
     setCompareMode(true);
   };
-
-  return (
+    
+    return (
     <PageLayout title="Results Overview" actions={pageActions}>
       {/* Enhanced Search and Filter Bar */}
       <Box sx={{ mb: 4 }}>
@@ -321,11 +322,11 @@ const ResultsPage = () => {
               }
             }}>
               <Typography variant="subtitle2" gutterBottom>
-                Total Tests
-              </Typography>
+                  Total Tests
+                </Typography>
               <Typography variant="h2">
-                {stats.total}
-              </Typography>
+                  {stats.total}
+                </Typography>
             </Paper>
           </Grid>
           
@@ -342,11 +343,11 @@ const ResultsPage = () => {
               }
             }}>
               <Typography variant="subtitle2" color="success.dark" gutterBottom>
-                Tests Passed
-              </Typography>
+                  Tests Passed
+                </Typography>
               <Typography variant="h2" color="success.dark">
-                {stats.passed}
-              </Typography>
+                  {stats.passed}
+                </Typography>
             </Paper>
           </Grid>
           
@@ -363,11 +364,11 @@ const ResultsPage = () => {
               }
             }}>
               <Typography variant="subtitle2" color="error.dark" gutterBottom>
-                Tests Failed
-              </Typography>
+                  Tests Failed
+                </Typography>
               <Typography variant="h2" color="error.dark">
-                {stats.failed}
-              </Typography>
+                  {stats.failed}
+                </Typography>
             </Paper>
           </Grid>
         </Grid>
@@ -383,15 +384,15 @@ const ResultsPage = () => {
               justifyContent: 'center',
               flexDirection: 'column'
             }}>
-              <ComplianceScoreGauge 
-                score={overallScore} 
+          <ComplianceScoreGauge 
+            score={overallScore} 
                 size={180}
                 sx={{ mb: 3 }}
-              />
+          />
               <Typography variant="body1" sx={{ textAlign: 'center' }}>
-                {overallScore >= 80 ? 'Excellent compliance level' : 
-                 overallScore >= 50 ? 'Moderate compliance level - improvements needed' : 
-                 'Low compliance level - significant improvements required'}
+            {overallScore >= 80 ? 'Excellent compliance level' : 
+             overallScore >= 50 ? 'Moderate compliance level - improvements needed' : 
+             'Low compliance level - significant improvements required'}
               </Typography>
             </Box>
           </Grid>
@@ -479,18 +480,18 @@ const ResultsPage = () => {
                   }}>
                     <Typography variant="body2">
                       {scores.passed}/{scores.total} tests passed
-                    </Typography>
-                    <Typography 
-                      variant="h6" 
-                      sx={{ 
-                        color: categoryScore >= 80 ? 'success.main' : 
-                               categoryScore >= 50 ? 'warning.main' : 
-                               'error.main'
-                      }}
-                    >
-                      {categoryScore.toFixed(1)}%
-                    </Typography>
-                  </Box>
+                      </Typography>
+                      <Typography 
+                        variant="h6" 
+                        sx={{ 
+                          color: categoryScore >= 80 ? 'success.main' : 
+                                 categoryScore >= 50 ? 'warning.main' : 
+                                 'error.main'
+                        }}
+                      >
+                        {categoryScore.toFixed(1)}%
+                      </Typography>
+                    </Box>
                   <Box
                     sx={{
                       height: 4,
@@ -521,7 +522,7 @@ const ResultsPage = () => {
       <Section 
         title="Test Results Timeline"
         action={
-          <Button
+          <Button 
             size="small"
             startIcon={<ExpandMoreIcon />}
             onClick={() => setExpandAll(!expandAll)}
@@ -567,8 +568,8 @@ const ResultsPage = () => {
             </LineChart>
           </ResponsiveContainer>
         </Box>
-
-        <TestResultTable
+        
+        <TestResultTable 
           results={testResults}
           filters={{
             category: filterCategory,
@@ -627,9 +628,9 @@ const ResultsPage = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCompareMode(false)}>Cancel</Button>
-          <Button
-            variant="contained"
-            color="primary"
+            <Button
+              variant="contained"
+              color="primary"
             disabled={!selectedRun || !selectedRunToCompare}
             onClick={() => {
               // Handle comparison
@@ -637,85 +638,85 @@ const ResultsPage = () => {
             }}
           >
             Compare
-          </Button>
+            </Button>
         </DialogActions>
       </Dialog>
-
-      {/* Export Dialog */}
-      <Dialog
-        open={exportDialogOpen}
+        
+        {/* Export Dialog */}
+        <Dialog
+          open={exportDialogOpen}
         onClose={closeExportDialog}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>
           <Typography variant="h6">
             Generating {exportType}
           </Typography>
-        </DialogTitle>
-        <DialogContent dividers>
-          {exporting ? (
-            <Box sx={{ textAlign: 'center', py: 2 }}>
-              <CircularProgress size={60} />
+          </DialogTitle>
+          <DialogContent dividers>
+            {exporting ? (
+              <Box sx={{ textAlign: 'center', py: 2 }}>
+                <CircularProgress size={60} />
               <Typography variant="body1" sx={{ mt: 2 }}>
-                Generating report... {exportProgress}%
-              </Typography>
-              <Box sx={{ width: '100%', mt: 2 }}>
-                <Box sx={{ 
-                  width: '100%', 
-                  height: 10, 
-                  borderRadius: 1, 
-                  bgcolor: 'background.neutral',
-                  overflow: 'hidden'
-                }}>
+                  Generating report... {exportProgress}%
+                </Typography>
+                <Box sx={{ width: '100%', mt: 2 }}>
                   <Box sx={{ 
-                    width: `${exportProgress}%`, 
-                    height: '100%', 
-                    bgcolor: 'primary.main',
-                    transition: 'width 0.3s ease-in-out'
-                  }} />
+                    width: '100%', 
+                    height: 10, 
+                    borderRadius: 1, 
+                  bgcolor: 'background.neutral',
+                    overflow: 'hidden'
+                  }}>
+                    <Box sx={{ 
+                      width: `${exportProgress}%`, 
+                      height: '100%', 
+                      bgcolor: 'primary.main',
+                      transition: 'width 0.3s ease-in-out'
+                    }} />
+                  </Box>
                 </Box>
               </Box>
-            </Box>
-          ) : (
-            <Box>
-              <Typography variant="subtitle1" gutterBottom>
-                You are about to generate:
-              </Typography>
-              <Box sx={{ pl: 2 }}>
-                <Typography variant="body1" gutterBottom>
-                  • <strong>Report Type:</strong> {exportType}
+            ) : (
+              <Box>
+                <Typography variant="subtitle1" gutterBottom>
+                  You are about to generate:
                 </Typography>
+                <Box sx={{ pl: 2 }}>
                 <Typography variant="body1" gutterBottom>
-                  • <strong>Format:</strong> {exportFormat}
-                </Typography>
-                <Typography variant="body1">
-                  • <strong>Includes:</strong> {Object.entries(exportOptions)
-                    .filter(([_, value]) => value)
-                    .map(([key]) => key.replace(/([A-Z])/g, ' $1').trim())
-                    .join(', ')}
+                    • <strong>Report Type:</strong> {exportType}
+                  </Typography>
+                <Typography variant="body1" gutterBottom>
+                    • <strong>Format:</strong> {exportFormat}
+                  </Typography>
+                  <Typography variant="body1">
+                    • <strong>Includes:</strong> {Object.entries(exportOptions)
+                      .filter(([_, value]) => value)
+                      .map(([key]) => key.replace(/([A-Z])/g, ' $1').trim())
+                      .join(', ')}
+                  </Typography>
+                </Box>
+              <Typography variant="body2" sx={{ mt: 2 }}>
+                  This report will contain compliance results for your model, providing detailed insights into the test outcomes.
                 </Typography>
               </Box>
-              <Typography variant="body2" sx={{ mt: 2 }}>
-                This report will contain compliance results for your model, providing detailed insights into the test outcomes.
-              </Typography>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          {!exporting && <Button onClick={closeExportDialog}>Cancel</Button>}
-          {!exporting && (
-            <Button 
-              variant="contained" 
-              color="primary" 
-              onClick={handleGenerateReport}
-              startIcon={exportFormat === 'PDF' ? <PictureAsPdfIcon /> : <GetAppIcon />}
-            >
-              Generate
-            </Button>
-          )}
-        </DialogActions>
-      </Dialog>
+            )}
+          </DialogContent>
+          <DialogActions>
+            {!exporting && <Button onClick={closeExportDialog}>Cancel</Button>}
+            {!exporting && (
+              <Button 
+                variant="contained" 
+                color="primary" 
+                onClick={handleGenerateReport}
+                startIcon={exportFormat === 'PDF' ? <PictureAsPdfIcon /> : <GetAppIcon />}
+              >
+                Generate
+              </Button>
+            )}
+          </DialogActions>
+        </Dialog>
     </PageLayout>
   );
 };

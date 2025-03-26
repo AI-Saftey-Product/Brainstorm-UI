@@ -306,8 +306,8 @@ const ModelOverview = () => {
             <Paper sx={{ p: 3 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                 <Typography variant="h6">
-                  Test History
-                </Typography>
+                Test History
+              </Typography>
                 
                 {/* Filters */}
                 <Box sx={{ display: 'flex', gap: 2 }}>
@@ -456,24 +456,24 @@ const ModelOverview = () => {
                                 }}
                               />
                             </TableCell>
-                            <TableCell>
-                              {new Date(result.timestamp).toLocaleString()}
-                            </TableCell>
-                            <TableCell>
+                        <TableCell>
+                          {new Date(result.timestamp).toLocaleString()}
+                        </TableCell>
+                        <TableCell>
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <Typography
-                                  sx={{
-                                    color: theme => {
-                                      const score = result.results.overallScore;
-                                      return score >= 80 ? theme.palette.success.main :
-                                             score >= 50 ? theme.palette.warning.main :
-                                             theme.palette.error.main;
-                                    },
-                                    fontWeight: 'bold'
-                                  }}
-                                >
+                          <Typography
+                            sx={{
+                              color: theme => {
+                                const score = result.results.overallScore;
+                                return score >= 80 ? theme.palette.success.main :
+                                       score >= 50 ? theme.palette.warning.main :
+                                       theme.palette.error.main;
+                              },
+                              fontWeight: 'bold'
+                            }}
+                          >
                                   {result.results.overallScore.toFixed(1)}%
-                                </Typography>
+                          </Typography>
                                 <IconButton
                                   size="small"
                                   onClick={() => setExpandedRow(expandedRow === result.id ? null : result.id)}
@@ -481,14 +481,14 @@ const ModelOverview = () => {
                                   {expandedRow === result.id ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
                                 </IconButton>
                               </Box>
-                            </TableCell>
-                            <TableCell>{result.results.totalTests}</TableCell>
+                        </TableCell>
+                        <TableCell>{result.results.totalTests}</TableCell>
                             <TableCell>{result.duration || '2m 30s'}</TableCell>
-                            <TableCell>
+                        <TableCell>
                               <Chip
                                 label={result.results.overallScore >= 80 ? 'Passed' : 'Failed'}
                                 color={result.results.overallScore >= 80 ? 'success' : 'error'}
-                                size="small"
+                            size="small"
                               />
                             </TableCell>
                             <TableCell>
@@ -572,10 +572,10 @@ const ModelOverview = () => {
                                   </Grid>
                                 </Box>
                               </Collapse>
-                            </TableCell>
-                          </TableRow>
+                        </TableCell>
+                      </TableRow>
                         </React.Fragment>
-                      ))}
+                    ))}
                   </TableBody>
                 </Table>
               </TableContainer>

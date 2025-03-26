@@ -3,7 +3,7 @@
  * Handles test operations and execution
  */
 
-const API_BASE_URL = import.meta.env.VITE_TESTS_API_URL || 'http://13.48.48.75:8000';
+const API_BASE_URL = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
 
 // Default fetch options for all API calls
 const fetchOptions = {
@@ -13,6 +13,23 @@ const fetchOptions = {
     'Content-Type': 'application/json',
     'Accept': 'application/json'
   }
+};
+
+// Add a cache for test results
+const testResultsCache = new Map();
+
+// Add a count for consecutive identical results
+let consecutiveIdenticalResults = 0;
+const MAX_IDENTICAL_RESULTS = 2;
+
+/**
+ * Format model type to be lowercase with underscores
+ * @param {string} modelType - The model type to format
+ * @returns {string} Formatted model type
+ */
+const formatModelType = (modelType) => {
+  if (!modelType) return '';
+  return modelType.toLowerCase().replace(/\s+/g, '_');
 };
 
 /**
@@ -76,84 +93,91 @@ export const getTestsByCategory = async (category) => {
 };
 
 /**
- * Format model type to be lowercase with underscores
- * @param {string} modelType - The model type to format
- * @returns {string} Formatted model type
- */
-const formatModelType = (modelType) => {
-  if (!modelType) return '';
-  return modelType.toLowerCase().replace(/\s+/g, '_');
-};
-
-/**
- * Run selected tests on the configured model
- * @param {Array} testIds - Array of test IDs to run
- * @param {Object} modelConfig - Model configuration object
- * @param {Object} testParameters - Optional parameters for tests
- * @param {Function} logCallback - Optional callback for logging
- * @returns {Promise<string>} Task ID for the test run
+ * Run tests with the selected test IDs and model configuration
+ * @param {Array} testIds - List of test IDs to run
+ * @param {Object} modelConfig - Model configuration
+ * @param {Object} testParameters - Additional test parameters
+ * @param {Function} logCallback - Optional callback for log messages
+ * @returns {Promise<string>} - Task ID for the test run
  */
 export const runTests = async (testIds, modelConfig, testParameters = {}, logCallback = null) => {
   try {
-    // Log model configuration for debugging
-    console.log('Starting tests with model configuration:', modelConfig);
-    
-    // Check for valid model configuration
-    if (!modelConfig || !modelConfig.model_id) {
-      throw new Error('Missing or invalid model configuration. Please ensure a valid model is configured.');
+    if (!testIds || testIds.length === 0) {
+      throw new Error('No tests selected');
     }
-    
-    // Create a clean model settings object for the API
-    // Ensure we're using the field names the API expects
-    const modelSettings = {
-      name: modelConfig.name || modelConfig.modelName || 'Unnamed Model',
-      modality: modelConfig.modality || modelConfig.modelCategory || 'NLP',
-      sub_type: formatModelType(modelConfig.sub_type || modelConfig.modelType || ''),
-      source: modelConfig.source || 'huggingface',
-      model_id: modelConfig.model_id || modelConfig.modelId || modelConfig.selectedModel || '',
-      api_key: modelConfig.api_key || modelConfig.apiKey || ''
+
+    if (!modelConfig) {
+      throw new Error('No model configuration provided');
+    }
+
+    const log = (message) => {
+      console.log(message);
+      if (logCallback && typeof logCallback === 'function') {
+        logCallback(message);
+      }
     };
-    
-    console.log('Sending model settings to API:', modelSettings);
-    
-    // Create the complete request body
-    const requestBody = {
+
+    log('Preparing to run tests...');
+    log(`Selected tests: ${testIds.length}`);
+    log(`Model: ${modelConfig.name || modelConfig.modelName}`);
+
+    // Format payload to match API expectations
+    const payload = {
+      // Use test_ids instead of tests
       test_ids: testIds,
-      model_settings: modelSettings,
-      parameters: testParameters
+      
+      // Use model_settings instead of model
+      model_settings: {
+        // Only include fields expected by the API
+        model_id: modelConfig.model_id || modelConfig.modelId || modelConfig.selectedModel || '',
+        modality: modelConfig.modality || modelConfig.modelCategory || 'NLP',
+        sub_type: modelConfig.sub_type || modelConfig.modelType || '',
+        source: modelConfig.source || 'huggingface',
+        api_key: modelConfig.api_key || modelConfig.apiKey || ''
+        // name field is not used in the API
+      },
+      
+      // Use parameters for test-specific parameters
+      parameters: { ...testParameters }
     };
-    
-    // Log the complete request body
-    console.log('Complete request body being sent to API:', JSON.stringify(requestBody, null, 2));
-    
-    // Make the API request to run tests
+
+    // Add test_run_id if provided to the root of the payload
+    if (testParameters && testParameters.test_run_id) {
+      log(`Using provided test run ID: ${testParameters.test_run_id}`);
+      payload.test_run_id = testParameters.test_run_id;
+      // Remove from parameters to avoid duplication
+      delete payload.parameters.test_run_id;
+    }
+
+    log('Sending request to API...');
+    console.log('Request payload:', payload);
+
     const response = await fetch(`${API_BASE_URL}/api/tests/run`, {
       method: 'POST',
-      ...fetchOptions,
-      body: JSON.stringify(requestBody)
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload)
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error response from API:', errorText);
-      console.error('Request that caused the error:', JSON.stringify(requestBody, null, 2));
-      throw new Error(`Failed to run tests: ${response.status} ${response.statusText}`);
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `API request failed with status ${response.status}`);
     }
-    
-    if (logCallback) logCallback(`Test run initiated successfully`);
-    
-    const { task_id } = await response.json();
-    if (logCallback) logCallback(`Test run started with task ID: ${task_id}`);
-    console.log('Test run started with task ID:', task_id);
-    
-    if (!task_id) {
-      throw new Error('No task ID returned from the API. The test run may have failed.');
+
+    const data = await response.json();
+    log('API response received');
+    console.log('Response:', data);
+
+    if (data && (data.task_id || data.test_run_id)) {
+      const taskId = data.task_id || data.test_run_id;
+      log(`Tests initiated with task ID: ${taskId}`);
+      return taskId;
+    } else {
+      throw new Error('No task ID in response');
     }
-    
-    return task_id;
   } catch (error) {
     console.error('Error running tests:', error);
-    if (logCallback) logCallback(`Error: ${error.message}`);
     throw error;
   }
 };
@@ -238,38 +262,6 @@ export const getFilteredTests = async (modelConfig) => {
 };
 
 /**
- * Get results of a test run
- * @param {string} taskId - ID of the test run task
- * @returns {Promise<Object>} Test results and compliance scores
- */
-export const getTestResults = async (taskId) => {
-  try {
-    console.log('Fetching results for task from backend:', taskId);
-    
-    // Validate the taskId before making API call
-    if (!taskId || taskId === 'undefined' || taskId === 'null') {
-      console.error('Invalid task ID provided:', taskId);
-      throw new Error('Invalid task ID provided to getTestResults');
-    }
-    
-    const response = await fetch(`${API_BASE_URL}/api/tests/results/${taskId}`, fetchOptions);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Error response from results API (${response.status}):`, errorText);
-      throw new Error(`Failed to fetch test results: ${response.status} ${response.statusText}`);
-    }
-    
-    const data = await response.json();
-    console.log('Received test results from backend:', data);
-    return data;
-  } catch (error) {
-    console.error('Error fetching test results:', error);
-    throw error;
-  }
-};
-
-/**
  * Get all test categories
  * @returns {Promise<Array>} List of test categories
  */
@@ -305,6 +297,138 @@ export const getTestCategories = async () => {
     }
   } catch (error) {
     console.error('Error fetching test categories:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get results of a test run
+ * @param {string} taskId - ID of the test run task
+ * @returns {Promise<Object>} Test results and compliance scores
+ */
+export const getTestResults = async (taskId) => {
+  try {
+    // If we already have results for this task, return them from cache
+    if (testResultsCache.has(taskId)) {
+      console.log('Returning test results from cache for task:', taskId);
+      
+      // Increment the count of consecutive identical results
+      consecutiveIdenticalResults++;
+      
+      // If we've gotten the same results multiple times, force a completed status
+      if (consecutiveIdenticalResults >= MAX_IDENTICAL_RESULTS) {
+        console.log(`Received identical results ${consecutiveIdenticalResults} times, marking as definitely completed`);
+        const cachedResults = testResultsCache.get(taskId);
+        return {
+          ...cachedResults,
+          cached: true,
+          status: 'completed',
+          definitely_completed: true
+        };
+      }
+      
+      const cachedResults = testResultsCache.get(taskId);
+      // Add a flag to indicate these are cached results
+      return {
+        ...cachedResults,
+        cached: true,
+        status: 'completed'
+      };
+    }
+    
+    console.log('Fetching results for task from backend:', taskId);
+    
+    // Reset consecutive identical results counter when making a new request
+    consecutiveIdenticalResults = 0;
+    
+    // Validate the taskId before making API call
+    if (!taskId || taskId === 'undefined' || taskId === 'null') {
+      console.error('Invalid task ID provided:', taskId);
+      throw new Error('Invalid task ID provided to getTestResults');
+    }
+    
+    // Use API_BASE_URL from environment or fallback to default
+    const API_URL = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
+    console.log('Using API URL:', API_URL);
+    
+    // Updated to use the correct endpoint URL pattern with PATH parameter (not query parameter)
+    const resultsEndpoint = `${API_URL}/api/tests/results/${taskId}`;
+    console.log('Fetching results from:', resultsEndpoint);
+    
+    const response = await fetch(resultsEndpoint, fetchOptions);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Error response from results API (${response.status}):`, errorText);
+      throw new Error(`Failed to fetch test results: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log('Received test results from backend:', data);
+    
+    // Special handling based on the response format
+    let processedData = data;
+    
+    // Handle different response formats
+    // Case 1: Array directly
+    if (Array.isArray(data)) {
+      console.log('Results returned as an array, wrapping in expected format');
+      processedData = {
+        results: data,
+        status: 'completed'
+      };
+    } 
+    // Case 2: Object with results.results nested structure
+    else if (data.results && data.results.results) {
+      console.log('Results have double nesting, flattening structure');
+      processedData = {
+        results: data.results.results,
+        status: data.status || 'completed',
+        summary: data.summary || data.results.summary || null,
+        compliance_scores: data.compliance_scores || data.results.compliance_scores || null
+      };
+    }
+    // Case 3: Results with nested structure
+    else if (data.results && !Array.isArray(data.results)) {
+      console.log('Results are an object with nested properties');
+      processedData = {
+        results: Array.isArray(data.results) ? data.results : Object.values(data.results),
+        status: data.status || 'completed',
+        summary: data.summary || null,
+        compliance_scores: data.compliance_scores || null
+      };
+    }
+    
+    console.log('Processed data format:', processedData);
+    
+    // Ensure results is always an array
+    if (processedData.results && !Array.isArray(processedData.results)) {
+      processedData.results = Object.values(processedData.results);
+    }
+    
+    // Check if the results are complete and should be cached
+    if (processedData.results && processedData.results.length > 0) {
+      console.log('Caching test results for task:', taskId);
+      testResultsCache.set(taskId, processedData);
+      
+      // Add summary information if not present
+      if (!processedData.summary) {
+        const totalTests = processedData.results.length;
+        const passedTests = processedData.results.filter(
+          test => test.status === 'success' || test.status === 'passed'
+        ).length;
+        
+        processedData.summary = {
+          total_tests: totalTests,
+          passed: passedTests,
+          failed: totalTests - passedTests
+        };
+      }
+    }
+    
+    return processedData;
+  } catch (error) {
+    console.error('Error fetching test results:', error);
     throw error;
   }
 };
