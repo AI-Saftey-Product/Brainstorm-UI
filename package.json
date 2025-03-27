@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint src",
-    "test": "vitest run"
+    "test": "vitest run",
+    "analyze": "vite-bundle-visualizer"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -29,6 +30,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "eslint": "^8.56.0",
     "vite": "^5.4.14",
+    "vite-bundle-visualizer": "^0.8.0",
     "vitest": "^1.2.0"
   }
 }
