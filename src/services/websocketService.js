@@ -9,13 +9,11 @@ console.log('Using Tests API URL:', TESTS_API_URL);
 
 // Function to convert HTTP URL to WebSocket URL
 function getWebSocketURL(url) {
-  console.log('Converting URL to WebSocket URL:', url);
-  const isProduction = import.meta.env.PROD;
-  console.log('Is Production:', isProduction);
+  console.log('Original URL:', url);
   
-  // Replace http(s):// with ws(s)://
-  const wsUrl = url.replace(/^http/, 'ws');
-  console.log('Converted WebSocket URL:', wsUrl);
+  // Force using non-secure WebSocket for testing
+  const wsUrl = 'ws://16.171.112.40/ws';
+  console.log('Forcing non-secure WebSocket URL:', wsUrl);
   
   return wsUrl;
 }
@@ -71,15 +69,15 @@ class WebSocketService {
     
     return new Promise((resolve, reject) => {
       try {
-        const wsUrl = import.meta.env.VITE_TESTS_API_URL || 'https://16.171.112.40';
+        // Use non-secure WebSocket URL for testing
         let wsEndpoint;
         
         if (taskId) {
           const taskIdStr = String(taskId);
-          wsEndpoint = `${wsUrl.replace(/^http/, 'ws')}/ws/tests/${taskIdStr}`;
+          wsEndpoint = `ws://16.171.112.40/ws/tests/${taskIdStr}`;
           console.log('Connecting to WebSocket with existing task ID:', wsEndpoint);
         } else {
-          wsEndpoint = `${wsUrl.replace(/^http/, 'ws')}/ws/tests`;
+          wsEndpoint = `ws://16.171.112.40/ws/tests`;
           console.log('Connecting to WebSocket to get a new test run ID:', wsEndpoint);
         }
         
