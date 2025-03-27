@@ -11,9 +11,9 @@ console.log('Using Tests API URL:', TESTS_API_URL);
 function getWebSocketURL(url) {
   console.log('Original URL:', url);
   
-  // Force using non-secure WebSocket for testing
-  const wsUrl = 'ws://16.171.112.40/ws';
-  console.log('Forcing non-secure WebSocket URL:', wsUrl);
+  // Force using secure WebSocket (wss://) since we're on HTTPS
+  const wsUrl = 'wss://16.171.112.40/ws';
+  console.log('Using secure WebSocket URL:', wsUrl);
   
   return wsUrl;
 }
@@ -69,15 +69,15 @@ class WebSocketService {
     
     return new Promise((resolve, reject) => {
       try {
-        // Use non-secure WebSocket URL for testing
+        // Use secure WebSocket URL for production
         let wsEndpoint;
         
         if (taskId) {
           const taskIdStr = String(taskId);
-          wsEndpoint = `ws://16.171.112.40/ws/tests/${taskIdStr}`;
+          wsEndpoint = `wss://16.171.112.40/ws/tests/${taskIdStr}`;
           console.log('Connecting to WebSocket with existing task ID:', wsEndpoint);
         } else {
-          wsEndpoint = `ws://16.171.112.40/ws/tests`;
+          wsEndpoint = `wss://16.171.112.40/ws/tests`;
           console.log('Connecting to WebSocket to get a new test run ID:', wsEndpoint);
         }
         
