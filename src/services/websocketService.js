@@ -22,28 +22,17 @@ function getWebSocketURL(url) {
   return wsUrl;
 }
 
-// Tests API WebSocket URL
+// Create WebSocket URL
 const TESTS_WS_URL = getWebSocketURL(TESTS_API_URL);
 console.log('Using Tests WebSocket URL:', TESTS_WS_URL);
 
 class WebSocketService {
   constructor() {
-    this.eventListeners = {
-      'test_status_update': [],
-      'test_result': [],
-      'test_complete': [],
-      'test_failed': [],
-      'message': [],
-      'error': [],
-      'close': [],
-      'connection': [],
-      'connection_established': [],
-      'raw_message': []  // New event type for raw message data
-    };
+    this.ws = null;
+    this.eventHandlers = {};
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
-    this.reconnectTimeout = null;
-    this.connected = false;
+    this.reconnectDelay = 1000;
   }
 
   /**
@@ -52,52 +41,33 @@ class WebSocketService {
    * @returns {Promise} - A promise that resolves when connection is established
    */
   connect(taskId) {
-    // Close any existing connection
     this.disconnect();
     
     return new Promise((resolve, reject) => {
       try {
-        // Use the correct WebSocket endpoint format based on whether we have a taskId
         const wsUrl = import.meta.env.VITE_TESTS_API_URL || 'https://16.171.112.40';
         let wsEndpoint;
         
         if (taskId) {
-          // If we have a taskId, connect to the specific test run
           const taskIdStr = String(taskId);
           wsEndpoint = `${wsUrl.replace(/^http/, 'ws')}/ws/tests/${taskIdStr}`;
           console.log('Connecting to WebSocket with existing task ID:', wsEndpoint);
         } else {
-          // If no taskId, connect to get a new test run ID
           wsEndpoint = `${wsUrl.replace(/^http/, 'ws')}/ws/tests`;
           console.log('Connecting to WebSocket to get a new test run ID:', wsEndpoint);
         }
         
-        // Create WebSocket connection with certificate verification bypass
+        // Create WebSocket connection with proper headers
         this.ws = new WebSocket(wsEndpoint, [], {
-          rejectUnauthorized: false,
           headers: {
-            'Origin': window.location.origin
+            'Origin': 'https://aws-amplify.d1gdmj3u8tokdo.amplifyapp.com'
           }
-        });
-        
-        // Add error handling for certificate errors
-        this.ws.addEventListener('error', (error) => {
-          console.warn('WebSocket SSL Certificate Error:', error);
-          // Continue despite certificate errors
         });
         
         this.ws.onopen = () => {
           console.log('WebSocket connection established');
-          this.connected = true;
-          
-          if (taskId) {
-            this.notifyListeners('connection_established', { taskId: String(taskId) });
-            resolve({ taskId: String(taskId) });
-          } else {
-            // When connecting without a taskId, we expect the server to send us a test run ID
-            // This will be handled in the onmessage handler
-            console.log('WebSocket connection established, waiting for test run ID...');
-          }
+          this.reconnectAttempts = 0;
+          resolve(this.ws);
         };
         
         this.ws.onmessage = (event) => {
@@ -154,31 +124,30 @@ class WebSocketService {
         
         this.ws.onerror = (error) => {
           console.error('WebSocket error:', error);
-          this.connected = false;
-          this.notifyListeners('error', error);
-          reject(error);
+          this.reconnectAttempts++;
+          if (this.reconnectAttempts > this.maxReconnectAttempts) {
+            this.ws.close();
+            reject(new Error('Max reconnect attempts reached'));
+          } else {
+            setTimeout(() => {
+              this.connect(taskId);
+            }, this.reconnectDelay);
+          }
         };
         
         this.ws.onclose = (event) => {
           console.log('WebSocket connection closed:', event);
-          this.connected = false;
-          this.notifyListeners('close', event);
-          
-          // Only reject if we're still waiting for a test run ID
-          if (!taskId && !event.wasClean) {
-            reject(new Error('WebSocket connection closed before receiving test run ID'));
+          this.reconnectAttempts++;
+          if (this.reconnectAttempts > this.maxReconnectAttempts) {
+            reject(new Error('Max reconnect attempts reached'));
+          } else {
+            setTimeout(() => {
+              this.connect(taskId);
+            }, this.reconnectDelay);
           }
         };
-        
-        // Set a timeout for getting the test run ID
-        if (!taskId) {
-          setTimeout(() => {
-            reject(new Error('Timeout waiting for test run ID'));
-          }, 10000);
-        }
       } catch (error) {
         console.error('Error creating WebSocket connection:', error);
-        this.notifyListeners('error', error);
         reject(error);
       }
     });
@@ -190,8 +159,8 @@ class WebSocketService {
    * @param {any} data - Event data
    */
   notifyListeners(type, data) {
-    if (this.eventListeners[type]) {
-      this.eventListeners[type].forEach(callback => {
+    if (this.eventHandlers[type]) {
+      this.eventHandlers[type].forEach(callback => {
         try {
           callback(data);
         } catch (error) {
@@ -208,10 +177,10 @@ class WebSocketService {
    */
   on(type, callback) {
     if (typeof callback === 'function') {
-      if (!this.eventListeners[type]) {
-        this.eventListeners[type] = [];
+      if (!this.eventHandlers[type]) {
+        this.eventHandlers[type] = [];
       }
-      this.eventListeners[type].push(callback);
+      this.eventHandlers[type].push(callback);
     }
     return this; // For method chaining
   }
@@ -222,8 +191,8 @@ class WebSocketService {
    * @param {Function} callback - Callback to remove
    */
   off(type, callback) {
-    if (this.eventListeners[type]) {
-      this.eventListeners[type] = this.eventListeners[type].filter(cb => cb !== callback);
+    if (this.eventHandlers[type]) {
+      this.eventHandlers[type] = this.eventHandlers[type].filter(cb => cb !== callback);
     }
     return this;
   }
@@ -246,12 +215,7 @@ class WebSocketService {
    */
   disconnect() {
     if (this.ws) {
-      // Only close if we're actually connected
-      if (this.connected) {
-        this.ws.close(1000, 'Normal closure');
-        this.connected = false;
-        console.log('WebSocket disconnected, listeners will be preserved for reconnection');
-      }
+      this.ws.close();
       this.ws = null;
     }
   }
@@ -260,23 +224,8 @@ class WebSocketService {
    * Reset and disconnect WebSocket, clearing all listeners
    */
   reset() {
-    // Only disconnect if we have an active connection
-    if (this.connected) {
-      this.disconnect();
-    }
-    // Clear all listeners
-    this.eventListeners = {
-      'test_status_update': [],
-      'test_result': [],
-      'test_complete': [],
-      'test_failed': [],
-      'message': [],
-      'error': [],
-      'close': [],
-      'connection': [],
-      'connection_established': [],
-      'raw_message': []  // New event type for raw message data
-    };
+    this.disconnect();
+    this.eventHandlers = {};
     console.log('WebSocket service completely reset, all listeners cleared');
   }
 

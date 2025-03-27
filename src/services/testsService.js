@@ -9,13 +9,11 @@ console.log('Using Tests API Base URL:', API_BASE_URL);
 // Default fetch options for browser
 const defaultFetchOptions = {
   mode: 'cors',
-  credentials: 'omit',
+  credentials: 'include', // Changed from 'omit' to 'include' to match backend's Access-Control-Allow-Credentials
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type'
+    'Origin': 'https://aws-amplify.d1gdmj3u8tokdo.amplifyapp.com' // Add Origin header to match backend's allowed origin
   }
 };
 
@@ -65,29 +63,47 @@ const makeRequest = async (url, options = {}) => {
 
   console.log('Making API request:', {
     url,
-    options: fetchOptions
+    method: options.method || 'GET',
+    headers: fetchOptions.headers,
+    credentials: fetchOptions.credentials
   });
 
   try {
-    // For OPTIONS requests, return immediately
-    if (options.method === 'OPTIONS') {
-      return;
-    }
-
     const response = await fetch(url, fetchOptions);
     
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Error response from API:', errorText);
+      console.error('Error response from API:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+        url: url,
+        headers: Object.fromEntries(response.headers.entries())
+      });
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     
-    return response.json();
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      return response.json();
+    } else {
+      const text = await response.text();
+      try {
+        return JSON.parse(text);
+      } catch (e) {
+        console.warn('Response was not JSON:', text);
+        return text;
+      }
+    }
   } catch (error) {
     if (error.message.includes('ERR_CERT_AUTHORITY_INVALID')) {
       console.warn('Certificate validation failed. Please accept the certificate in your browser or contact the administrator to set up proper SSL certificates.');
     }
-    console.error('Request failed:', error);
+    console.error('Request failed:', {
+      error: error.message,
+      url: url,
+      options: fetchOptions
+    });
     throw error;
   }
 };
