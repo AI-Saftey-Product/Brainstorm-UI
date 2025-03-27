@@ -420,9 +420,9 @@ const RunTestsPage = () => {
         }
         
         // The WebSocket connection is already established - no need to reconnect
-
-        // Set up a promise that will resolve when test completion is received
-        const testCompletionPromise = new Promise((resolve, reject) => {
+          
+          // Set up a promise that will resolve when test completion is received
+          const testCompletionPromise = new Promise((resolve, reject) => {
           const timeout = setTimeout(() => {
             reject(new Error('Timeout waiting for test completion'));
           }, 300000); // 5 minutes timeout
@@ -504,7 +504,7 @@ const RunTestsPage = () => {
                 
               case 'test_complete':
                 console.log('SWITCH CASE: Processing test_complete message', data);
-                // Handle test completion
+            // Handle test completion
                 console.log('Test completion received:', data);
                 clearTimeout(timeout);
                 websocketService.off('message', processMessage);
@@ -537,7 +537,7 @@ const RunTestsPage = () => {
                       // Only set runningTests to false AFTER we've processed results
                       setRunningTests(false);
                       resolve(results);
-                    } catch (error) {
+              } catch (error) {
                       console.log('FETCH FAILED:', error.message);
                       retryCount++;
                       console.error(`Error fetching test results (attempt ${retryCount}/${maxRetries}):`, error);
@@ -590,7 +590,7 @@ const RunTestsPage = () => {
                 
               case 'test_failed':
                 console.log('SWITCH CASE: Processing test_failed message', data);
-                // Handle test failure
+            // Handle test failure
                 console.error('Test failed:', data);
                 clearTimeout(timeout);
                 websocketService.off('message', processMessage);
@@ -623,9 +623,9 @@ const RunTestsPage = () => {
           websocketService.on('test_result', processMessage);
           websocketService.on('test_complete', processMessage);
           websocketService.on('test_failed', processMessage);
-        });
-        
-        // Wait for test completion
+          });
+          
+          // Wait for test completion
         await testCompletionPromise;
         
         // Only disconnect after we've fully processed the results
@@ -634,21 +634,21 @@ const RunTestsPage = () => {
         
         // Navigate to results page
         navigate('/results');
-      } catch (error) {
+        } catch (error) {
         // Handle any errors during test execution
-        addLog(`Error during test execution: ${error.message}`);
-        setError(`Test execution failed: ${error.message}`);
+          addLog(`Error during test execution: ${error.message}`);
+          setError(`Test execution failed: ${error.message}`);
         // Always set runningTests to false in case of error
         setRunningTests(false);
       } finally {
         // Don't disconnect here, let the cleanup effect handle it
         // NOTE: DON'T set runningTests to false here - it's already been handled elsewhere
-      }
-    } catch (error) {
+        }
+      } catch (error) {
       // Handle errors in test initialization
-      console.error('Error running tests:', error);
-      setError(`Error running tests: ${error.message}`);
-      addLog(`Error: ${error.message}`);
+        console.error('Error running tests:', error);
+        setError(`Error running tests: ${error.message}`);
+        addLog(`Error: ${error.message}`);
     }
   };
   
@@ -960,7 +960,7 @@ const RunTestsPage = () => {
       if (!Array.isArray(results)) {
         console.error('Failed to extract results array from data:', results);
         setError('Invalid test results format: could not extract results array');
-        return;
+      return;
       }
     }
     
@@ -1050,7 +1050,7 @@ const RunTestsPage = () => {
     
     if (typeof saveTestResults === 'function') {
       try {
-        saveTestResults(resultsObject, scores);
+    saveTestResults(resultsObject, scores);
         console.log('Successfully saved results and scores to app context');
       } catch (error) {
         console.error('Error saving results to context:', error);
