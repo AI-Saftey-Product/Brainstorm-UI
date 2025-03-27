@@ -69,16 +69,18 @@ class WebSocketService {
     
     return new Promise((resolve, reject) => {
       try {
-        // Use secure WebSocket URL for production
+        // Use secure WebSocket URL with a different path that might be configured in the backend
         let wsEndpoint;
         
         if (taskId) {
           const taskIdStr = String(taskId);
+          // Try with the exact format from your original code
           wsEndpoint = `wss://16.171.112.40/ws/tests/${taskIdStr}`;
-          console.log('Connecting to WebSocket with existing task ID:', wsEndpoint);
+          console.log('Connecting to WebSocket with task ID:', wsEndpoint);
         } else {
+          // Try with the exact format from your original code
           wsEndpoint = `wss://16.171.112.40/ws/tests`;
-          console.log('Connecting to WebSocket to get a new test run ID:', wsEndpoint);
+          console.log('Connecting to WebSocket endpoint:', wsEndpoint);
         }
         
         // Create WebSocket connection
