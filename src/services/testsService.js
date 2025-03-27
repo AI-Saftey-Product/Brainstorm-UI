@@ -9,10 +9,13 @@ console.log('Using Tests API Base URL:', API_BASE_URL);
 // Default fetch options for browser
 const defaultFetchOptions = {
   mode: 'cors',
-  credentials: 'include',
+  credentials: 'omit',
   headers: {
     'Content-Type': 'application/json',
-    'Accept': 'application/json'
+    'Accept': 'application/json',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type'
   }
 };
 
@@ -66,6 +69,11 @@ const makeRequest = async (url, options = {}) => {
   });
 
   try {
+    // For OPTIONS requests, return immediately
+    if (options.method === 'OPTIONS') {
+      return;
+    }
+
     const response = await fetch(url, fetchOptions);
     
     if (!response.ok) {
@@ -79,6 +87,7 @@ const makeRequest = async (url, options = {}) => {
     if (error.message.includes('ERR_CERT_AUTHORITY_INVALID')) {
       console.warn('Certificate validation failed. Please accept the certificate in your browser or contact the administrator to set up proper SSL certificates.');
     }
+    console.error('Request failed:', error);
     throw error;
   }
 };
