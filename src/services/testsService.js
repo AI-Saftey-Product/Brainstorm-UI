@@ -312,33 +312,50 @@ export const getTestResults = async (taskId) => {
     throw new Error('Task ID is required');
   }
   
-  console.log(`[TESTS-SERVICE] API endpoints not available, loading from localStorage: ${taskId}`);
+  console.log(`[TESTS-SERVICE] Fetching test results for task ID: ${taskId}`);
+  const TESTS_API_URL = process.env.REACT_APP_API_URL || import.meta.env?.VITE_TESTS_API_URL || 'http://localhost:8000';
+  const endpoint = `${TESTS_API_URL}/api/test_runs/${taskId}`;
+  
+  console.log(`[TESTS-SERVICE] Making API request to: ${endpoint}`);
   
   try {
-    // Try to load results from localStorage instead
-    const storedResults = localStorage.getItem('testResults');
-    const storedScores = localStorage.getItem('complianceScores');
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      }
+    });
     
-    if (!storedResults) {
-      console.warn('[TESTS-SERVICE] No results found in localStorage');
-      return null;
+    // Log full response details for debugging
+    console.log(`[TESTS-SERVICE] Response status: ${response.status} ${response.statusText}`);
+    console.log('[TESTS-SERVICE] Response headers:', Object.fromEntries([...response.headers.entries()]));
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[TESTS-SERVICE] Error response: ${errorText}`);
+      throw new Error(`API error: ${response.status} - ${errorText || response.statusText}`);
     }
     
-    const results = JSON.parse(storedResults);
-    const scores = storedScores ? JSON.parse(storedScores) : {};
+    // Try to parse as JSON
+    let responseData;
+    try {
+      const responseText = await response.text();
+      console.log('[TESTS-SERVICE] Raw response text (first 500 chars):', responseText.substring(0, 500) + (responseText.length > 500 ? '...' : ''));
+      responseData = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('[TESTS-SERVICE] Failed to parse response as JSON:', parseError);
+      throw new Error('Invalid response format');
+    }
     
-    console.log(`[TESTS-SERVICE] Loaded ${Object.keys(results).length} results from localStorage`);
+    // Log the parsed response
+    console.log('[TESTS-SERVICE] Parsed response (structure):', 
+      Object.keys(responseData).map(key => `${key}: ${typeof responseData[key]}`));
     
-    // Return in a format similar to expected API response
-    return {
-      test_run: {
-        id: taskId,
-        results: results,
-        compliance_scores: scores
-      }
-    };
+    // Always return the entire response - let the caller handle extracting the right parts
+    return responseData;
   } catch (error) {
-    console.error('[TESTS-SERVICE] Error loading results from localStorage:', error);
-    throw new Error('Failed to load test results');
+    console.error('[TESTS-SERVICE] Error fetching test results:', error);
+    throw error;
   }
 };

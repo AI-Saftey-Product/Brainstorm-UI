@@ -45,6 +45,7 @@ import { createModelAdapter } from '../services/modelAdapter';
 import { getSavedModelConfigs, getModelConfigById, saveTestResults as saveModelTestResults } from '../services/modelStorageService';
 import websocketService from '../services/websocketService';
 import WebSocketService from '../services/websocketService';
+import testResultsService from '../services/testResultsService';
 
 // Extract the TESTS_API_URL from environment for direct API calls
 const TESTS_API_URL = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
@@ -63,25 +64,6 @@ const CATEGORY_COLORS = {
   'safety': '#c62828', // darker red
   'compliance': '#4527a0' // deep purple
 };
-
-// Add this at the top after imports
-console.log('[DEBUG-CRITICAL] RunTests.jsx loaded', new Date().toISOString());
-
-// Add this right after imports and constants
-// IMPORTANT: Debug code to catch fetch calls
-if (typeof window !== 'undefined') {
-  const originalFetch = window.fetch;
-  window.fetch = function(...args) {
-    // Only log calls to the problematic endpoint
-    if (args[0] && args[0].includes('api/test_runs')) {
-      console.log('[FETCH-DEBUG] Intercepted fetch call to api/test_runs:', args);
-      console.trace('[FETCH-DEBUG] Call stack:');
-      return Promise.reject(new Error(`API call to ${args[0]} blocked by intercept`));
-    }
-    return originalFetch.apply(this, args);
-  };
-  console.log('[FETCH-DEBUG] Fetch interception enabled');
-}
 
 const RunTestsPage = () => {
   const navigate = useNavigate();
@@ -133,9 +115,6 @@ const RunTestsPage = () => {
   
   // Add new state for test results data source
   const [testResultsDataSource, setTestResultsDataSource] = useState([]);
-  
-  // Add currentTaskId state variable at the top of the component
-  const [currentTaskId, setCurrentTaskId] = useState('');
   
   // Initialize test selection when component mounts
   useEffect(() => {
@@ -520,7 +499,7 @@ const RunTestsPage = () => {
       
       try {
           // Create a reusable handler function that processes any message type
-          const processMessage = async (data) => {
+          const processMessage = (data) => {
             console.log('HANDLER CALLED: Processing message:', data);
             
             // If data doesn't have a type but is a string, try to parse it
@@ -659,14 +638,14 @@ const RunTestsPage = () => {
                     
                     // Save the current taskId so we can retrieve it when the test completes
                     if (taskId) {
-                      // Save to localStorage instead of database
-                      try {
-                        localStorage.setItem('testResults', JSON.stringify(resultsObject));
-                        localStorage.setItem('complianceScores', JSON.stringify(scoresData || {}));
-                        console.log('[RESULTS-DEBUG] Individual test results saved to localStorage');
-                      } catch (error) {
-                        console.error('[RESULTS-DEBUG] Failed to save test results to localStorage:', error);
-                      }
+                      // Save to database using the dedicated service
+                      testResultsService.saveResults(taskId, resultsObject, scoresData)
+                        .then(savedRecord => {
+                          console.log('[RESULTS-DEBUG] Individual test results saved to database:', savedRecord);
+                        })
+                        .catch(error => {
+                          console.error('[RESULTS-DEBUG] Failed to save test results to database:', error);
+                        });
                     }
                     
                     // Update state with the formatted results object
@@ -687,155 +666,142 @@ const RunTestsPage = () => {
                 break;
                 
               case 'test_complete':
-                (async () => {
-                  console.log('SWITCH CASE: Processing test_complete message', data);
-                  console.log('[CRITICAL-DEBUG] Full test_complete message:', JSON.stringify(data, null, 2));
+                console.log('SWITCH CASE: Processing test_complete message', data);
+                console.log('[CRITICAL-DEBUG] Full test_complete message:', JSON.stringify(data, null, 2));
+                
+                // Mark test as complete first to update UI state
+                setTestComplete(true);
+                
+                // Extract test run ID from the response
+                const taskId = data.task_id || data.id || data.test_run_id;
+                console.log('[CRITICAL-DEBUG] Task ID from test_complete message:', taskId);
+                
+                // Initialize results object
+                let resultsForNavigation = {};
+                let scoresForNavigation = {};
+                
+                // Case 1: Results in test_run structure (most common format)
+                if (data.test_run && typeof data.test_run === 'object') {
+                  console.log('[CRITICAL-DEBUG] Found test_run object in response');
                   
-                  // Mark test as complete first to update UI state
-                  setTestComplete(true);
-                  
-                  // Extract test run ID from the response
-                  const taskId = data.task_id || data.id || data.test_run_id;
-                  console.log('[CRITICAL-DEBUG] Task ID from test_complete message:', taskId);
-                  
-                  // Save the task ID in component state for the "Show Results" button
-                  setCurrentTaskId(taskId);
-                  
-                  // Initialize results object
-                  let resultsForNavigation = {};
-                  let scoresForNavigation = {};
-                  
-                  // Case 1: Results in test_run structure (most common format)
-                  if (data.test_run && typeof data.test_run === 'object') {
-                    console.log('[CRITICAL-DEBUG] Found test_run object in response');
-                    
-                    // Case 1.1: test_run contains results with test_results (newest format)
-                    if (data.test_run.results && data.test_run.results.test_results) {
-                      console.log('[CRITICAL-DEBUG] Found test_results in test_run.results');
-                      resultsForNavigation = data.test_run.results.test_results;
-                    } 
-                    // Case 1.2: test_run contains test_results directly
-                    else if (data.test_run.test_results) {
-                      console.log('[CRITICAL-DEBUG] Found test_results directly in test_run');
-                      resultsForNavigation = data.test_run.test_results;
-                    }
-                    // Case 1.3: test_run contains results directly
-                    else if (data.test_run.results) {
-                      console.log('[CRITICAL-DEBUG] Found results in test_run');
-                      resultsForNavigation = data.test_run.results;
-                    }
-                    
-                    // Extract scores if available
-                    if (data.test_run.compliance_scores) {
-                      scoresForNavigation = data.test_run.compliance_scores;
-                    }
+                  // Case 1.1: test_run contains results with test_results (newest format)
+                  if (data.test_run.results && data.test_run.results.test_results) {
+                    console.log('[CRITICAL-DEBUG] Found test_results in test_run.results');
+                    resultsForNavigation = data.test_run.results.test_results;
+                  } 
+                  // Case 1.2: test_run contains test_results directly
+                  else if (data.test_run.test_results) {
+                    console.log('[CRITICAL-DEBUG] Found test_results directly in test_run');
+                    resultsForNavigation = data.test_run.test_results;
                   }
-                  // Case 2: Results in top-level results object
-                  else if (data.results) {
-                    console.log('[CRITICAL-DEBUG] Found results at top level');
-                    
-                    // Case 2.1: results contains test_results
-                    if (data.results.test_results) {
-                      console.log('[CRITICAL-DEBUG] Found test_results in results');
-                      resultsForNavigation = data.results.test_results;
-                    } else {
-                      // Case 2.2: results is the results object
-                      resultsForNavigation = data.results;
-                    }
-                    
-                    // Extract scores if available
-                    if (data.scores) {
-                      scoresForNavigation = data.scores;
-                    }
+                  // Case 1.3: test_run contains results directly
+                  else if (data.test_run.results) {
+                    console.log('[CRITICAL-DEBUG] Found results in test_run');
+                    resultsForNavigation = data.test_run.results;
                   }
                   
-                  // Check if we got results
-                  if (resultsForNavigation && Object.keys(resultsForNavigation).length > 0) {
-                    console.log('[CRITICAL-DEBUG] Successfully extracted results:', resultsForNavigation);
+                  // Extract scores if available
+                  if (data.test_run.compliance_scores) {
+                    scoresForNavigation = data.test_run.compliance_scores;
+                  }
+                }
+                // Case 2: Results in top-level results object
+                else if (data.results) {
+                  console.log('[CRITICAL-DEBUG] Found results at top level');
+                  
+                  // Case 2.1: results contains test_results
+                  if (data.results.test_results) {
+                    console.log('[CRITICAL-DEBUG] Found test_results in results');
+                    resultsForNavigation = data.results.test_results;
+                  } else {
+                    // Case 2.2: results is the results object
+                    resultsForNavigation = data.results;
+                  }
+                  
+                  // Extract scores if available
+                  if (data.scores) {
+                    scoresForNavigation = data.scores;
+                  }
+                }
+                
+                // Check if we got results
+                if (resultsForNavigation && Object.keys(resultsForNavigation).length > 0) {
+                  console.log('[CRITICAL-DEBUG] Successfully extracted results:', resultsForNavigation);
+                  
+                  // Check if results need conversion to the expected format with test and result properties
+                  const sampleKey = Object.keys(resultsForNavigation)[0];
+                  const sampleValue = resultsForNavigation[sampleKey];
+                  
+                  // If results don't have the expected structure, convert them
+                  if (!sampleValue || !sampleValue.test || !sampleValue.result) {
+                    console.log('[CRITICAL-DEBUG] Results need conversion to test/result format');
                     
-                    // Check if results need conversion to the expected format with test and result properties
-                    const sampleKey = Object.keys(resultsForNavigation)[0];
-                    const sampleValue = resultsForNavigation[sampleKey];
-                    
-                    // If results don't have the expected structure, convert them
-                    if (!sampleValue || !sampleValue.test || !sampleValue.result) {
-                      console.log('[CRITICAL-DEBUG] Results need conversion to test/result format');
-                      
-                      const formattedResults = {};
-                      Object.entries(resultsForNavigation).forEach(([key, value]) => {
-                        // If it's an object with non-null value
-                        if (value && typeof value === 'object') {
-                          formattedResults[key] = {
-                            test: {
-                              id: key,
-                              name: value.test_name || value.name || key,
-                              category: value.category || value.test_category || 'unknown',
-                              description: value.description || '',
-                              severity: value.severity || 'medium'
-                            },
-                            result: {
-                              pass: value.status === 'success' || value.status === 'passed' || value.pass === true,
-                              score: value.score || 0,
-                              message: value.message || '',
-                              details: value.details || value.analysis || {},
-                              timestamp: value.created_at || value.timestamp || new Date().toISOString()
-                            }
-                          };
-                        }
-                      });
-                      
-                      // Use formatted results if we have any
-                      if (Object.keys(formattedResults).length > 0) {
-                        resultsForNavigation = formattedResults;
+                    const formattedResults = {};
+                    Object.entries(resultsForNavigation).forEach(([key, value]) => {
+                      // If it's an object with non-null value
+                      if (value && typeof value === 'object') {
+                        formattedResults[key] = {
+                          test: {
+                            id: key,
+                            name: value.test_name || value.name || key,
+                            category: value.category || value.test_category || 'unknown',
+                            description: value.description || '',
+                            severity: value.severity || 'medium'
+                          },
+                          result: {
+                            pass: value.status === 'success' || value.status === 'passed' || value.pass === true,
+                            score: value.score || 0,
+                            message: value.message || '',
+                            details: value.details || value.analysis || {},
+                            timestamp: value.created_at || value.timestamp || new Date().toISOString()
+                          }
+                        };
                       }
-                    }
-                    
-                    // Also save to localStorage for persistence
-                    try {
-                      localStorage.setItem('testResults', JSON.stringify(resultsForNavigation));
-                      localStorage.setItem('complianceScores', JSON.stringify(scoresForNavigation || {}));
-                      console.log('[CRITICAL-DEBUG] Saved results to localStorage');
-                    } catch (error) {
-                      console.error('[CRITICAL-DEBUG] Error saving to localStorage:', error);
-                    }
-                    
-                    // Prepare data for navigation
-                    const navigationState = {
-                      taskId,
-                      results: resultsForNavigation,
-                      scores: scoresForNavigation
-                    };
-                    
-                    // Log what we're passing to the Results page
-                    console.log('[CRITICAL-DEBUG] Navigation state:', {
-                      taskId,
-                      resultsCount: Object.keys(resultsForNavigation).length,
-                      scoresCount: Object.keys(scoresForNavigation).length
                     });
                     
-                    // Navigate to Results page with the data
-                    setRunningTests(false);
-                    if (typeof saveTestResults === 'function') {
-                      saveTestResults(resultsForNavigation, scoresForNavigation);
-                      console.log('[CRITICAL-DEBUG] Saved results to context');
-                    } else {
-                      console.error('[CRITICAL-DEBUG] saveTestResults function not available!');
+                    // Use formatted results if we have any
+                    if (Object.keys(formattedResults).length > 0) {
+                      resultsForNavigation = formattedResults;
                     }
-                    navigate('/results', { state: navigationState });
-                  } else {
-                    console.log('[CRITICAL-DEBUG] No results found in WebSocket message');
-                    setError('No test results were extracted from the WebSocket response. Check logs for details.');
-                    setRunningTests(false);
-                    
-                    // Still navigate to results with the taskId so we can see debug info
-                    console.log('[CRITICAL-DEBUG] Navigating to Results with taskId only for debugging');
-                    navigate('/results', { state: { taskId } });
                   }
-                })().catch(err => {
-                  console.error('[CRITICAL-DEBUG] Error in test_complete handler:', err);
-                  setError('Error processing test completion: ' + err.message);
+                  
+                  // Save results to context for global access
+                  if (typeof saveTestResults === 'function') {
+                    saveTestResults(resultsForNavigation, scoresForNavigation);
+                    console.log('[CRITICAL-DEBUG] Saved results to context');
+                    } else {
+                    console.error('[CRITICAL-DEBUG] saveTestResults function not available!');
+                  }
+                  
+                  // Also save to database for future retrieval
+                  if (typeof testResultsService !== 'undefined' && testResultsService.saveResults) {
+                    testResultsService.saveResults(taskId, resultsForNavigation, scoresForNavigation)
+                      .then(() => console.log('[CRITICAL-DEBUG] Saved results to database'))
+                      .catch(error => console.error('[CRITICAL-DEBUG] Error saving to database:', error));
+                  }
+                  
+                  // Prepare data for navigation
+                  const navigationState = {
+                    taskId,
+                    results: resultsForNavigation,
+                    scores: scoresForNavigation
+                  };
+                  
+                  // Log what we're passing to the Results page
+                  console.log('[CRITICAL-DEBUG] Navigation state:', {
+                    taskId,
+                    resultsCount: Object.keys(resultsForNavigation).length,
+                    scoresCount: Object.keys(scoresForNavigation).length
+                  });
+                  
+                  // Navigate to Results page with the data
                   setRunningTests(false);
-                });
+                  navigate('/results', { state: navigationState });
+                } else {
+                  console.error('[CRITICAL-DEBUG] No results extracted from test_complete message');
+                  setError('No test results were found in the response. Please try again.');
+                  setRunningTests(false);
+                }
                 break;
                 
               case 'test_failed':
@@ -919,23 +885,15 @@ const RunTestsPage = () => {
           throw new Error('No task ID returned from the API. Test run could not be initiated.');
         }
         
-        addLog(`Tests initiated successfully with task ID: ${taskId}`);
-        console.log('[CRITICAL-DEBUG] Task ID from initiate test response:', taskId);
-
-        // Save task ID for future reference
-        setCurrentTaskId(taskId);
-        ensureTaskIdForResults(taskId);
-
+        addLog(`Test run initiated with task ID: ${taskId}`);
+        
+        // Verify the task ID matches the test run ID from WebSocket
+        if (taskId !== testRunId) {
+          addLog(`Warning: Task ID from API (${taskId}) differs from WebSocket test run ID (${testRunId}). Using WebSocket ID for monitoring.`);
+        }
+        
         // Tests will now be executed and results will be received via WebSocket events
         addLog('Tests started. Waiting for results via WebSocket...');
-        
-        // Also ensure saveTestResults is called properly in test_complete handler
-        if (typeof saveTestResults === 'function') {
-          saveTestResults(resultsForNavigation, scoresForNavigation);
-          console.log('[CRITICAL-DEBUG] Saved results to context');
-        } else {
-          console.error('[CRITICAL-DEBUG] saveTestResults function not available!');
-        }
       } catch (error) {
         // Handle any errors during test execution
         addLog(`Error during test execution: ${error.message}`);
@@ -1250,7 +1208,7 @@ const RunTestsPage = () => {
         // Convert object to array if it's an object of test objects
         if (typeof normalizedResults === 'object') {
           normalizedResults = Object.values(normalizedResults);
-        } else {
+      } else {
           normalizedResults = [normalizedResults];
         }
       }
@@ -1367,41 +1325,6 @@ const RunTestsPage = () => {
       console.error('[LISTENER-DEBUG] Error during manual test:', error);
     }
   };
-  
-  // Add a utility function to ensure taskId is available for navigation
-  const ensureTaskIdForResults = (id) => {
-    if (!id) {
-      console.error('[CRITICAL-DEBUG] No task ID available for navigation');
-      return false;
-    }
-    
-    // Save the ID for the "Show Results" button
-    setCurrentTaskId(id);
-    
-    // Also save to localStorage for persistence
-    try {
-      localStorage.setItem('currentTaskId', id);
-      console.log(`[CRITICAL-DEBUG] Saved current task ID to localStorage: ${id}`);
-      return true;
-    } catch (error) {
-      console.error('[CRITICAL-DEBUG] Error saving task ID to localStorage:', error);
-      return false;
-    }
-  };
-  
-  // Add code to load the currentTaskId from localStorage on component mount
-  useEffect(() => {
-    // Check if we have a stored task ID
-    try {
-      const storedTaskId = localStorage.getItem('currentTaskId');
-      if (storedTaskId) {
-        console.log(`[CRITICAL-DEBUG] Loaded task ID from localStorage: ${storedTaskId}`);
-        setCurrentTaskId(storedTaskId);
-      }
-    } catch (error) {
-      console.error('[CRITICAL-DEBUG] Error loading task ID from localStorage:', error);
-    }
-  }, []);
   
   return (
     <Container maxWidth="lg">
@@ -1527,30 +1450,6 @@ const RunTestsPage = () => {
                     >
                       Reset WebSocket
                     </Button>
-                    <Button 
-                      size="small" 
-                      variant="outlined"
-                      onClick={() => {
-                        console.log('[DEBUG-CRITICAL] Debugging window.fetch');
-                        const originalFetch = window.fetch;
-                        window.fetch = function(...args) {
-                          console.log('[DEBUG-CRITICAL] fetch called with:', ...args);
-                          return originalFetch.apply(this, args)
-                            .then(response => {
-                              console.log('[DEBUG-CRITICAL] fetch response:', response);
-                              return response;
-                            })
-                            .catch(error => {
-                              console.error('[DEBUG-CRITICAL] fetch error:', error);
-                              throw error;
-                            });
-                        };
-                        alert('Debugging fetch enabled - check console for fetch calls');
-                      }}
-                      sx={{ fontSize: '0.75rem' }}
-                    >
-                      Debug Fetch Calls
-                    </Button>
                   </Box>
                 </Box>
               )}
@@ -1637,59 +1536,6 @@ const RunTestsPage = () => {
                     </Typography>
                   </Box>
                 </Box>
-              )}
-              
-              {testComplete && (
-                <Button
-                  variant="contained"
-                  color="primary"
-                  onClick={() => {
-                    // Try current state first
-                    let taskIdToUse = currentTaskId;
-                    
-                    // If not available, try localStorage
-                    if (!taskIdToUse) {
-                      try {
-                        taskIdToUse = localStorage.getItem('currentTaskId');
-                        console.log(`[MANUAL-NAV] Got task ID from localStorage: ${taskIdToUse}`);
-                      } catch (error) {
-                        console.error('[MANUAL-NAV] Error getting task ID from localStorage:', error);
-                      }
-                    }
-                    
-                    if (taskIdToUse) {
-                      // Navigate to results page with the task ID and whatever results we have in localStorage
-                      console.log('[MANUAL-NAV] Navigating to results with task ID:', taskIdToUse);
-                      
-                      // Try to get results from localStorage
-                      let storedResults = {};
-                      let storedScores = {};
-                      try {
-                        const resultsJson = localStorage.getItem('testResults');
-                        const scoresJson = localStorage.getItem('complianceScores');
-                        if (resultsJson) storedResults = JSON.parse(resultsJson);
-                        if (scoresJson) storedScores = JSON.parse(scoresJson);
-                        console.log('[MANUAL-NAV] Found stored results:', Object.keys(storedResults).length);
-                      } catch (error) {
-                        console.error('[MANUAL-NAV] Error retrieving from localStorage:', error);
-                      }
-                      
-                      navigate('/results', { 
-                        state: { 
-                          taskId: taskIdToUse,
-                          results: storedResults,
-                          scores: storedScores
-                        } 
-                      });
-                    } else {
-                      console.error('[MANUAL-NAV] No task ID available for manual navigation');
-                      setError('No task ID available. Cannot view results.');
-                    }
-                  }}
-                  sx={{ mt: 2 }}
-                >
-                  Show Results
-                </Button>
               )}
             </Paper>
           )}

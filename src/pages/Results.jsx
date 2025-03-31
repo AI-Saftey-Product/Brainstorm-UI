@@ -53,6 +53,7 @@ import ComplianceScoreGauge from '../components/common/ComplianceScoreGauge';
 import TestResultTable from '../components/widgets/TestResultTable';
 import PageLayout from '../components/layout/PageLayout';
 import Section from '../components/layout/Section';
+import testResultsService from '../services/testResultsService';
 import { getTestResults } from '../services/testsService';
 
 // Color mapping for categories
@@ -95,11 +96,6 @@ const ResultsPage = () => {
   // Debug button to help examine the current state
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   
-  // Add missing state variables
-  const [taskId, setTaskId] = useState(location.state?.taskId || '');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  
   const debugState = () => {
     // Show detailed debugging info in the console
     console.log('[RESULTS-DEBUG] === STATE DEBUGGING ===');
@@ -140,7 +136,6 @@ const ResultsPage = () => {
     console.log('[RESULTS-DEBUG] Results page mounted');
     debugObject(location, 'Location object');
     
-    // Check if results exist in location state
     if (location?.state) {
       debugObject(location.state, 'Location state');
       
@@ -158,34 +153,26 @@ const ResultsPage = () => {
         debugObject(locationResults, 'Location results sample', true);
         
         // Update state with the results from location
-        setLocalResults(locationResults);
-        if (locationScores) setLocalScores(locationScores);
+        setResults(locationResults);
+        if (locationScores) setScores(locationScores);
         
         // Save to context if not already there
         if (typeof saveTestResults === 'function') {
           console.log('[RESULTS-DEBUG] Saving location results to context');
           saveTestResults(locationResults, locationScores || {});
         }
-      } else if (locationTaskId) {
-        // If we have a task ID but no results, try to fetch from API
-        console.log('[RESULTS-DEBUG] No results in location state, trying API fetch');
-        fetchResultsFromAPI(locationTaskId);
       } else {
-        console.log('[RESULTS-DEBUG] No taskId or results in location state, checking localStorage');
-        // Try to load from localStorage
-        loadResultsFromLocalStorage();
+        console.log('[RESULTS-DEBUG] No results in location state, checking context...');
       }
     } else {
-      console.log('[RESULTS-DEBUG] No location state available, checking localStorage');
-      // Try to load from localStorage
-      const loadedFromStorage = loadResultsFromLocalStorage();
-      
-      // If we have context results but none in localStorage
-      if (!loadedFromStorage && testResults && Object.keys(testResults).length > 0) {
-        console.log(`[RESULTS-DEBUG] Using ${Object.keys(testResults).length} results from context`);
-        setLocalResults(testResults);
-        if (complianceScores) setLocalScores(complianceScores);
-      }
+      console.log('[RESULTS-DEBUG] No location state available');
+    }
+    
+    // Always check for results in context and update if found
+    if (testResults && Object.keys(testResults).length > 0) {
+      console.log(`[RESULTS-DEBUG] Using ${Object.keys(testResults).length} results from context`);
+      setResults(testResults);
+      if (complianceScores && Object.keys(complianceScores).length > 0) setScores(complianceScores);
     }
 
     // Check for taskId in query params
@@ -194,70 +181,238 @@ const ResultsPage = () => {
     if (queryTaskId && !location?.state?.taskId) {
       console.log(`[RESULTS-DEBUG] Found task ID in query params: ${queryTaskId}`);
       setTaskId(queryTaskId);
-      
-      // If we have a taskId in query params but no results yet, log it
-      if (Object.keys(localResults).length === 0) {
-        console.log('[RESULTS-DEBUG] No results available for taskId:', queryTaskId);
-        // Just try to load from localStorage again
-        loadResultsFromLocalStorage();
-      }
     }
   }, [location, testResults, complianceScores, saveTestResults]);
   
-  // Replace this function with a version that only checks localStorage
+  // Update the fetchResultsFromAPI function
   const fetchResultsFromAPI = async (id) => {
     if (!id) {
       console.error('[RESULTS-DEBUG] Cannot fetch results: No task ID provided');
       return;
     }
 
-    console.log(`[RESULTS-DEBUG] API endpoints not available, checking localStorage for task ID: ${id}`);
+    console.log(`[RESULTS-DEBUG] Fetching results from API for task ID: ${id}`);
     setLoading(true);
     
     try {
-      // Just try to load from localStorage
-      const success = loadResultsFromLocalStorage();
+      const apiResults = await testsService.getTestResults(id);
+      debugObject(apiResults, 'API response');
       
-      if (!success) {
-        setError('No results found for this test run. Results should be saved from WebSocket messages, not API calls.');
+      // Check various locations for the results data
+      let extractedResults = null;
+      let extractedScores = null;
+      
+      // Case 1: API returned an object with test_run property (most common)
+      if (apiResults?.test_run) {
+        console.log('[RESULTS-DEBUG] Found test_run in API response');
+        
+        // Check for results in test_run.results.test_results (newest format)
+        if (apiResults.test_run.results?.test_results) {
+          console.log('[RESULTS-DEBUG] Found test_results in test_run.results');
+          extractedResults = apiResults.test_run.results.test_results;
+        }
+        // Check for results in test_run.test_results
+        else if (apiResults.test_run.test_results) {
+          console.log('[RESULTS-DEBUG] Found test_results directly in test_run');
+          extractedResults = apiResults.test_run.test_results;
+        }
+        // Check for results in test_run.results
+        else if (apiResults.test_run.results) {
+          console.log('[RESULTS-DEBUG] Found results in test_run');
+          extractedResults = apiResults.test_run.results;
+        }
+        
+        // Check for scores
+        if (apiResults.test_run.compliance_scores) {
+          extractedScores = apiResults.test_run.compliance_scores;
+        }
+      }
+      // Case 2: API returned results directly
+      else if (apiResults?.results) {
+        console.log('[RESULTS-DEBUG] Found results at top level of API response');
+        
+        // Check for test_results in results
+        if (apiResults.results.test_results) {
+          console.log('[RESULTS-DEBUG] Found test_results in results');
+          extractedResults = apiResults.results.test_results;
+        } else {
+          // Results is the results object itself
+          extractedResults = apiResults.results;
+        }
+        
+        // Check for scores
+        if (apiResults.scores) {
+          extractedScores = apiResults.scores;
+        }
+      }
+      // Case 3: API returned the results directly
+      else if (apiResults && typeof apiResults === 'object' && !Array.isArray(apiResults)) {
+        console.log('[RESULTS-DEBUG] API response itself might be the results');
+        extractedResults = apiResults;
+      }
+      
+      // If we found results, process them
+      if (extractedResults && Object.keys(extractedResults).length > 0) {
+        console.log(`[RESULTS-DEBUG] Successfully extracted ${Object.keys(extractedResults).length} results from API`);
+        
+        // Check if we need to convert to expected format
+        const sampleKey = Object.keys(extractedResults)[0];
+        const sampleValue = extractedResults[sampleKey];
+        
+        if (!sampleValue?.test || !sampleValue?.result) {
+          console.log('[RESULTS-DEBUG] Converting results to expected format');
+          
+          const formattedResults = {};
+          Object.entries(extractedResults).forEach(([key, value]) => {
+            // Skip if not an object or null
+            if (!value || typeof value !== 'object') return;
+            
+            formattedResults[key] = {
+              test: {
+                id: key,
+                name: value.test_name || value.name || key,
+                category: value.category || value.test_category || 'unknown',
+                description: value.description || '',
+                severity: value.severity || 'medium'
+              },
+              result: {
+                pass: value.status === 'success' || value.status === 'passed' || value.pass === true,
+                score: value.score || 0,
+                message: value.message || '',
+                details: value.details || value.analysis || {},
+                timestamp: value.created_at || value.timestamp || new Date().toISOString()
+              }
+            };
+          });
+          
+          if (Object.keys(formattedResults).length > 0) {
+            extractedResults = formattedResults;
+          }
+        }
+        
+        // Update state with the new results
+        setResults(extractedResults);
+        if (extractedScores) setScores(extractedScores);
+        
+        // Save results to context and database
+        if (typeof saveTestResults === 'function') {
+          console.log('[RESULTS-DEBUG] Saving API results to context');
+          saveTestResults(extractedResults, extractedScores || {});
+        }
+        
+        if (testResultsService?.saveResults) {
+          console.log('[RESULTS-DEBUG] Saving API results to database');
+          testResultsService.saveResults(id, extractedResults, extractedScores || {})
+            .catch(error => console.error('[RESULTS-DEBUG] Error saving to database:', error));
+        }
+      } else {
+        console.log('[RESULTS-DEBUG] No results found in API response');
+        setError('No results found for this test run.');
       }
     } catch (error) {
-      console.error('[RESULTS-DEBUG] Error checking localStorage:', error);
+      console.error('[RESULTS-DEBUG] Error fetching results from API:', error);
       setError(`Error fetching results: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
   
-  // Add a function to load results from localStorage
-  const loadResultsFromLocalStorage = () => {
+  // Update checkOtherDataSources
+  const checkOtherDataSources = () => {
+    // Check localStorage directly
     try {
       const storedResults = localStorage.getItem('testResults');
       const storedScores = localStorage.getItem('complianceScores');
       
+      console.log('[RESULTS-PAGE-DEBUG] localStorage test results:', 
+        storedResults ? `Found (${storedResults.length} bytes)` : 'Not found');
       if (storedResults) {
-        const parsedResults = JSON.parse(storedResults);
-        console.log('[RESULTS-DEBUG] Loaded results from localStorage:', 
-          parsedResults ? Object.keys(parsedResults).length : 0, 'results');
+        console.log('[RESULTS-PAGE-DEBUG] localStorage results content:', storedResults);
+      }
+      console.log('[RESULTS-PAGE-DEBUG] localStorage compliance scores:', 
+        storedScores ? `Found (${storedScores.length} bytes)` : 'Not found');
+      
+      // First priority: Check if we already have data from router location state
+      if (location.state && location.state.results && Object.keys(location.state.results).length > 0) {
+        console.log('[RESULTS-PAGE-DEBUG] Using results from navigation state', location.state.results);
+        setLocalResults(location.state.results);
+        setLocalScores(location.state.scores || {});
         
-        if (parsedResults && Object.keys(parsedResults).length > 0) {
-          setLocalResults(parsedResults);
+        // Also save to context if it's empty
+        if ((!testResults || Object.keys(testResults).length === 0) && typeof saveTestResults === 'function') {
+          console.log('[RESULTS-PAGE-DEBUG] Saving location state results to context');
+          // This will also update localStorage
+          saveTestResults(location.state.results, location.state.scores || {});
         }
       }
-      
-      if (storedScores) {
-        const parsedScores = JSON.parse(storedScores);
-        console.log('[RESULTS-DEBUG] Loaded scores from localStorage');
+      // Second priority: Check localStorage if context is empty
+      else if (storedResults && (!testResults || Object.keys(testResults).length === 0)) {
+        console.warn('[RESULTS-PAGE-DEBUG] Results exist in localStorage but not in context!');
         
-        if (parsedScores && Object.keys(parsedScores).length > 0) {
-          setLocalScores(parsedScores);
+        // Try to parse the localStorage data
+        try {
+          let parsedResults;
+          try {
+            parsedResults = JSON.parse(storedResults);
+          } catch (parseError) {
+            console.error('[RESULTS-PAGE-DEBUG] Error parsing localStorage results:', parseError);
+            if (storedResults === '{}') {
+              parsedResults = {};
+            } else {
+              // If it's not valid JSON but looks like an empty object, use an empty object
+              parsedResults = {};
+            }
+          }
+          
+          console.log('[RESULTS-PAGE-DEBUG] Parsed results from localStorage:', 
+            parsedResults ? Object.keys(parsedResults).length : 0, 'tests');
+          
+          // Store in local state for immediate use
+          if (parsedResults && Object.keys(parsedResults).length > 0) {
+            console.log('[RESULTS-PAGE-DEBUG] Using localStorage data directly for rendering');
+            setLocalResults(parsedResults);
+            
+            if (storedScores) {
+              try {
+                const parsedScores = JSON.parse(storedScores);
+                setLocalScores(parsedScores);
+                console.log('[RESULTS-PAGE-DEBUG] Parsed scores from localStorage:', 
+                  Object.keys(parsedScores).length, 'categories');
+              } catch (e) {
+                console.error('[RESULTS-PAGE-DEBUG] Error parsing scores from localStorage:', e);
+              }
+            }
+          } else {
+            console.warn('[RESULTS-PAGE-DEBUG] localStorage results are empty or invalid');
+          }
+          
+          // If context is empty but localStorage is not empty (unlikely), update context
+          if (parsedResults && Object.keys(parsedResults).length > 0 && (!testResults || Object.keys(testResults).length === 0)) {
+            console.log('[RESULTS-PAGE-DEBUG] Loading results from localStorage to context');
+            
+            // Use the saveTestResults function if available
+            if (typeof saveTestResults === 'function') {
+              try {
+                const parsedScores = storedScores ? JSON.parse(storedScores) : {};
+                saveTestResults(parsedResults, parsedScores);
+                console.log('[RESULTS-PAGE-DEBUG] Successfully loaded localStorage results into context');
+              } catch (saveError) {
+                console.error('[RESULTS-PAGE-DEBUG] Error saving results to context:', saveError);
+              }
+            } else {
+              console.error('[RESULTS-PAGE-DEBUG] saveTestResults function not available in context');
+            }
+          }
+        } catch (parseError) {
+          console.error('[RESULTS-PAGE-DEBUG] Error checking localStorage results:', parseError);
         }
+      } else if (testResults && Object.keys(testResults).length > 0) {
+        console.log('[RESULTS-PAGE-DEBUG] Using existing test results from context');
+      } else {
+        console.warn('[RESULTS-PAGE-DEBUG] No results found in any source (location, context, or localStorage)');
       }
-      
-      return !!storedResults;
-    } catch (e) {
-      console.error('[RESULTS-DEBUG] Error loading from localStorage:', e);
-      return false;
+    } catch (error) {
+      console.error('[RESULTS-PAGE-DEBUG] Error checking localStorage:', error);
     }
   };
   
@@ -513,33 +668,13 @@ const ResultsPage = () => {
             </Box>
             
             <Box sx={{ mt: 3 }}>
-              <Typography variant="subtitle2" gutterBottom>Stored Data:</Typography>
-              <Box sx={{ display: 'flex', gap: '5px' }}>
-                <Button 
-                  variant="outlined"
-                  size="small"
-                  onClick={() => {
-                    try {
-                      const storedResults = localStorage.getItem('testResults');
-                      const storedScores = localStorage.getItem('complianceScores');
-                      console.log('[DEBUG] localStorage testResults:', storedResults ? JSON.parse(storedResults) : null);
-                      console.log('[DEBUG] localStorage complianceScores:', storedScores ? JSON.parse(storedScores) : null);
-                      alert(`Found ${storedResults ? Object.keys(JSON.parse(storedResults)).length : 0} results in localStorage`);
-                    } catch (error) {
-                      console.error('[DEBUG] Error checking localStorage:', error);
-                    }
-                  }}
-                >
-                  Check localStorage
-                </Button>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={() => console.log({localResults, localScores, testResults, complianceScores})}
-                >
-                  Log Current State
-                </Button>
-              </Box>
+              <Button 
+                variant="contained"
+                color="warning"
+                onClick={handleDirectFetch}
+              >
+                Direct API Fetch
+              </Button>
             </Box>
           </Paper>
         )}
@@ -588,7 +723,69 @@ const ResultsPage = () => {
   
   // Add a direct API fetch debug button in the Debug State section
   const handleDirectFetch = async () => {
-    // Delete this entire function - the API endpoint doesn't exist
+    if (!taskId) {
+      alert('No task ID available to fetch results');
+      return;
+    }
+    
+    setDirectFetching(true);
+    console.log(`[DIRECT-FETCH] Attempting direct fetch for task ID: ${taskId}`);
+    
+    try {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/test_runs/${taskId}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('[DIRECT-FETCH] Response:', data);
+      
+      // Process results and update UI
+      if (data && data.test_run) {
+        let directResults = null;
+        let directScores = null;
+        
+        if (data.test_run.results?.test_results) {
+          directResults = data.test_run.results.test_results;
+        } else if (data.test_run.test_results) {
+          directResults = data.test_run.test_results;
+        } else if (data.test_run.results) {
+          directResults = data.test_run.results;
+        }
+        
+        if (data.test_run.compliance_scores) {
+          directScores = data.test_run.compliance_scores;
+        }
+        
+        if (directResults && Object.keys(directResults).length > 0) {
+          // Update state with the direct results
+          setResults(directResults);
+          if (directScores) setScores(directScores);
+          
+          // Save to context and database
+          if (typeof saveTestResults === 'function') {
+            saveTestResults(directResults, directScores || {});
+          }
+          
+          alert(`Successfully fetched ${Object.keys(directResults).length} results directly from API`);
+        } else {
+          alert('No results found in direct API response');
+        }
+      } else {
+        alert('Invalid API response format');
+      }
+    } catch (error) {
+      console.error('[DIRECT-FETCH] Error:', error);
+      alert(`Direct fetch error: ${error.message}`);
+    } finally {
+      setDirectFetching(false);
+    }
   };
   
     return (
