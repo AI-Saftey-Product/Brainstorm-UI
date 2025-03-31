@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useCallback, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -53,6 +53,7 @@ import ComplianceScoreGauge from '../components/common/ComplianceScoreGauge';
 import TestResultTable from '../components/widgets/TestResultTable';
 import PageLayout from '../components/layout/PageLayout';
 import Section from '../components/layout/Section';
+import { getTestResults } from '../services/testsService';
 
 // Color mapping for categories
 const CATEGORY_COLORS = {
@@ -69,9 +70,196 @@ const CATEGORY_COLORS = {
   'compliance': '#4527a0' // deep purple
 };
 
+// Add this debug utility function at the top of the file after imports
+const debugObject = (obj, label) => {
+  try {
+    console.log(`[RESULTS-DEBUG] ${label}:`, typeof obj === 'object' ? JSON.stringify(obj, null, 2) : obj);
+  } catch (e) {
+    console.log(`[RESULTS-DEBUG] ${label} (circular reference):`, obj);
+  }
+};
+
 const ResultsPage = () => {
   const navigate = useNavigate();
-  const { testResults, complianceScores, selectedTests } = useAppContext();
+  const location = useLocation();
+  const { testResults, complianceScores, selectedTests, saveTestResults } = useAppContext();
+  
+  // State from location if passed during navigation
+  const locationResults = location.state?.results || {};
+  const locationScores = location.state?.scores || {};
+  
+  // Local state as fallback
+  const [localResults, setLocalResults] = useState({});
+  const [localScores, setLocalScores] = useState({});
+  
+  // Debug button to help examine the current state
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
+  
+  // Add missing state variables
+  const [taskId, setTaskId] = useState(location.state?.taskId || '');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  
+  const debugState = () => {
+    // Show detailed debugging info in the console
+    console.log('[RESULTS-DEBUG] === STATE DEBUGGING ===');
+    console.log('[RESULTS-DEBUG] Context testResults:', testResults);
+    console.log('[RESULTS-DEBUG] Context complianceScores:', complianceScores);
+    console.log('[RESULTS-DEBUG] Location state:', location.state);
+    console.log('[RESULTS-DEBUG] Location results:', locationResults);
+    console.log('[RESULTS-DEBUG] Local results state:', localResults);
+    console.log('[RESULTS-DEBUG] Selected tests:', selectedTests);
+    
+    // Toggle debug panel
+    setShowDebugPanel(!showDebugPanel);
+  };
+  
+  // DEBUG: Log test results when they arrive
+  useEffect(() => {
+    console.log('[RESULTS-PAGE-DEBUG] Checking for test results...');
+    console.log('[RESULTS-PAGE-DEBUG] Context test results:', 
+      testResults && Object.keys(testResults).length ? 'Found' : 'Not found');
+    console.log('[RESULTS-PAGE-DEBUG] Context compliance scores:', 
+      complianceScores && Object.keys(complianceScores).length ? 'Found' : 'Not found');
+    console.log('[RESULTS-PAGE-DEBUG] Selected tests:', selectedTests);
+    console.log('[RESULTS-PAGE-DEBUG] Location state:', location.state ? 'Available' : 'Not available');
+    if (location.state) {
+      console.log('[RESULTS-PAGE-DEBUG] Location results:', 
+        locationResults && Object.keys(locationResults).length ? 'Found' : 'Not found');
+    }
+    
+    try {
+      // ... existing code ...
+    } catch (error) {
+      console.error('[RESULTS-PAGE-DEBUG] Error in useEffect:', error);
+    }
+  }, [testResults, complianceScores, selectedTests, location.state, locationResults]);
+  
+  // Update the useEffect that handles location state
+  useEffect(() => {
+    console.log('[RESULTS-DEBUG] Results page mounted');
+    debugObject(location, 'Location object');
+    
+    // Check if results exist in location state
+    if (location?.state) {
+      debugObject(location.state, 'Location state');
+      
+      // Extract data from location state
+      const { taskId: locationTaskId, results: locationResults, scores: locationScores } = location.state;
+      
+      if (locationTaskId) {
+        setTaskId(locationTaskId);
+        console.log(`[RESULTS-DEBUG] Task ID from location state: ${locationTaskId}`);
+      }
+      
+      // Check if results exist in location state
+      if (locationResults && typeof locationResults === 'object' && Object.keys(locationResults).length > 0) {
+        console.log(`[RESULTS-DEBUG] Found ${Object.keys(locationResults).length} results in location state`);
+        debugObject(locationResults, 'Location results sample', true);
+        
+        // Update state with the results from location
+        setLocalResults(locationResults);
+        if (locationScores) setLocalScores(locationScores);
+        
+        // Save to context if not already there
+        if (typeof saveTestResults === 'function') {
+          console.log('[RESULTS-DEBUG] Saving location results to context');
+          saveTestResults(locationResults, locationScores || {});
+        }
+      } else if (locationTaskId) {
+        // If we have a task ID but no results, try to fetch from API
+        console.log('[RESULTS-DEBUG] No results in location state, trying API fetch');
+        fetchResultsFromAPI(locationTaskId);
+      } else {
+        console.log('[RESULTS-DEBUG] No taskId or results in location state, checking localStorage');
+        // Try to load from localStorage
+        loadResultsFromLocalStorage();
+      }
+    } else {
+      console.log('[RESULTS-DEBUG] No location state available, checking localStorage');
+      // Try to load from localStorage
+      const loadedFromStorage = loadResultsFromLocalStorage();
+      
+      // If we have context results but none in localStorage
+      if (!loadedFromStorage && testResults && Object.keys(testResults).length > 0) {
+        console.log(`[RESULTS-DEBUG] Using ${Object.keys(testResults).length} results from context`);
+        setLocalResults(testResults);
+        if (complianceScores) setLocalScores(complianceScores);
+      }
+    }
+
+    // Check for taskId in query params
+    const params = new URLSearchParams(location.search);
+    const queryTaskId = params.get('taskId');
+    if (queryTaskId && !location?.state?.taskId) {
+      console.log(`[RESULTS-DEBUG] Found task ID in query params: ${queryTaskId}`);
+      setTaskId(queryTaskId);
+      
+      // If we have a taskId in query params but no results yet, log it
+      if (Object.keys(localResults).length === 0) {
+        console.log('[RESULTS-DEBUG] No results available for taskId:', queryTaskId);
+        // Just try to load from localStorage again
+        loadResultsFromLocalStorage();
+      }
+    }
+  }, [location, testResults, complianceScores, saveTestResults]);
+  
+  // Replace this function with a version that only checks localStorage
+  const fetchResultsFromAPI = async (id) => {
+    if (!id) {
+      console.error('[RESULTS-DEBUG] Cannot fetch results: No task ID provided');
+      return;
+    }
+
+    console.log(`[RESULTS-DEBUG] API endpoints not available, checking localStorage for task ID: ${id}`);
+    setLoading(true);
+    
+    try {
+      // Just try to load from localStorage
+      const success = loadResultsFromLocalStorage();
+      
+      if (!success) {
+        setError('No results found for this test run. Results should be saved from WebSocket messages, not API calls.');
+      }
+    } catch (error) {
+      console.error('[RESULTS-DEBUG] Error checking localStorage:', error);
+      setError(`Error fetching results: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Add a function to load results from localStorage
+  const loadResultsFromLocalStorage = () => {
+    try {
+      const storedResults = localStorage.getItem('testResults');
+      const storedScores = localStorage.getItem('complianceScores');
+      
+      if (storedResults) {
+        const parsedResults = JSON.parse(storedResults);
+        console.log('[RESULTS-DEBUG] Loaded results from localStorage:', 
+          parsedResults ? Object.keys(parsedResults).length : 0, 'results');
+        
+        if (parsedResults && Object.keys(parsedResults).length > 0) {
+          setLocalResults(parsedResults);
+        }
+      }
+      
+      if (storedScores) {
+        const parsedScores = JSON.parse(storedScores);
+        console.log('[RESULTS-DEBUG] Loaded scores from localStorage');
+        
+        if (parsedScores && Object.keys(parsedScores).length > 0) {
+          setLocalScores(parsedScores);
+        }
+      }
+      
+      return !!storedResults;
+    } catch (e) {
+      console.error('[RESULTS-DEBUG] Error loading from localStorage:', e);
+      return false;
+    }
+  };
   
   const [currentTab, setCurrentTab] = useState(0);
   const [categoryExpanded, setCategoryExpanded] = useState({});
@@ -102,7 +290,8 @@ const ResultsPage = () => {
     criticalOnly: false,
     recentOnly: false
   });
-  
+  const [directFetching, setDirectFetching] = useState(false);
+
   const handleMenuOpen = (event) => {
     setMenuAnchorEl(event.currentTarget);
   };
@@ -159,29 +348,87 @@ const ResultsPage = () => {
   
   // Calculate overall compliance score
   const calculateOverallScore = () => {
-    if (!complianceScores || typeof complianceScores !== 'object') return 0;
+    const scores = effectiveScores || {};
     
-    const scores = Object.values(complianceScores);
-    if (scores.length === 0) return 0;
+    if (!scores || typeof scores !== 'object') {
+      console.log('[RESULTS-PAGE-DEBUG] Invalid compliance scores format:', scores);
+      return 0;
+    }
     
-    const totalPassed = scores.reduce((sum, score) => sum + (score?.passed || 0), 0);
-    const totalTests = scores.reduce((sum, score) => sum + (score?.total || 0), 0);
+    // If we don't have explicit scores, try to calculate from results
+    if (Object.keys(scores).length === 0 && effectiveResults) {
+      console.log('[RESULTS-PAGE-DEBUG] No explicit scores, calculating from results');
+      
+      // Group tests by category
+      const categories = {};
+      Object.values(effectiveResults).forEach(result => {
+        if (result && result.test && result.result) {
+          const category = result.test.category || 'unknown';
+          if (!categories[category]) {
+            categories[category] = { total: 0, passed: 0 };
+          }
+          categories[category].total++;
+          if (result.result.pass) {
+            categories[category].passed++;
+          }
+        }
+      });
+      
+      // Calculate overall score from categories
+      if (Object.keys(categories).length > 0) {
+        const totalPassed = Object.values(categories).reduce((sum, cat) => sum + cat.passed, 0);
+        const totalTests = Object.values(categories).reduce((sum, cat) => sum + cat.total, 0);
+        
+        console.log('[RESULTS-PAGE-DEBUG] Calculated score from results:', totalPassed, '/', totalTests);
+        return totalTests > 0 ? (totalPassed / totalTests) * 100 : 0;
+      }
+    }
     
+    const scoreValues = Object.values(scores);
+    if (scoreValues.length === 0) {
+      console.log('[RESULTS-PAGE-DEBUG] No compliance scores available');
+      return 0;
+    }
+    
+    const totalPassed = scoreValues.reduce((sum, score) => sum + (score?.passed || 0), 0);
+    const totalTests = scoreValues.reduce((sum, score) => sum + (score?.total || 0), 0);
+    
+    console.log('[RESULTS-PAGE-DEBUG] Calculated score:', totalPassed, '/', totalTests);
     return totalTests > 0 ? (totalPassed / totalTests) * 100 : 0;
   };
   
-  const overallScore = calculateOverallScore();
+  // Use context data first, then fall back to local state from location or localStorage
+  const effectiveResults = Object.keys(testResults).length > 0 
+    ? testResults 
+    : Object.keys(locationResults).length > 0
+      ? locationResults
+      : localResults;
+      
+  const effectiveScores = Object.keys(complianceScores).length > 0 
+    ? complianceScores 
+    : Object.keys(locationScores).length > 0
+      ? locationScores
+      : localScores;
   
-  // Check if we have results to display
-  const hasResults = testResults && typeof testResults === 'object' && Object.keys(testResults).length > 0;
+  // Check if we have any results to show
+  const hasResults = effectiveResults && Object.keys(effectiveResults).length > 0;
+  
+  console.log('[RESULTS-PAGE-DEBUG] hasResults:', hasResults);
+  console.log('[RESULTS-PAGE-DEBUG] effectiveResults:', effectiveResults);
+  
+  const overallScore = calculateOverallScore();
   
   // Statistics
   const getStats = () => {
-    if (!hasResults) return { total: 0, passed: 0, failed: 0 };
+    if (!hasResults) {
+      console.log('[RESULTS-PAGE-DEBUG] No results available for stats');
+      return { total: 0, passed: 0, failed: 0 };
+    }
     
-    const total = Object.keys(testResults).length;
-    const passed = Object.values(testResults).filter(result => result?.result?.pass).length;
+    const total = Object.keys(effectiveResults).length;
+    const passed = Object.values(effectiveResults).filter(result => result?.result?.pass).length;
     
+    console.log('[RESULTS-PAGE-DEBUG] Stats calculated:', { total, passed, failed: total - passed });
     return {
       total,
       passed,
@@ -194,7 +441,7 @@ const ResultsPage = () => {
   // If no tests selected, show warning
   if (!selectedTests || selectedTests.length === 0) {
       return (
-      <PageLayout title="Compliance Results Dashboard">
+      <PageLayout title="Results Dashboard">
         <Alert severity="warning" sx={{ mb: 3 }}>
           No tests have been selected yet. Please configure and run tests to see results.
         </Alert>
@@ -205,6 +452,97 @@ const ResultsPage = () => {
           >
           Go to Test Configuration
           </Button>
+      </PageLayout>
+    );
+  }
+  
+  // If tests were selected but no results available, show a different message
+  if (selectedTests.length > 0 && !hasResults) {
+    return (
+      <PageLayout title="Results Dashboard">
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Tests have been selected but no results are available yet. Run the tests to see results.
+        </Alert>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button 
+            variant="contained" 
+            color="primary"
+            startIcon={<RestartAltIcon />}
+            onClick={() => navigate('/run-tests')}
+          >
+            Run Tests
+          </Button>
+          <Button
+            variant="outlined"
+            onClick={debugState}
+          >
+            Debug State
+          </Button>
+        </Box>
+        
+        {showDebugPanel && (
+          <Paper sx={{ mt: 3, p: 2 }}>
+            <Typography variant="h6" gutterBottom>Debug Information</Typography>
+            
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle1">Location State</Typography>
+              <pre style={{ background: '#f5f5f5', padding: 8, overflowX: 'auto' }}>
+                {JSON.stringify(location.state, null, 2) || 'null'}
+              </pre>
+            </Box>
+            
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle1">Test Results (Context)</Typography>
+              <pre style={{ background: '#f5f5f5', padding: 8, overflowX: 'auto' }}>
+                {JSON.stringify(testResults, null, 2) || 'null'}
+              </pre>
+            </Box>
+            
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle1">Local Results State</Typography>
+              <pre style={{ background: '#f5f5f5', padding: 8, overflowX: 'auto' }}>
+                {JSON.stringify(localResults, null, 2) || 'null'}
+              </pre>
+            </Box>
+            
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle1">Selected Tests</Typography>
+              <pre style={{ background: '#f5f5f5', padding: 8, overflowX: 'auto' }}>
+                {JSON.stringify(selectedTests, null, 2) || 'null'}
+              </pre>
+            </Box>
+            
+            <Box sx={{ mt: 3 }}>
+              <Typography variant="subtitle2" gutterBottom>Stored Data:</Typography>
+              <Box sx={{ display: 'flex', gap: '5px' }}>
+                <Button 
+                  variant="outlined"
+                  size="small"
+                  onClick={() => {
+                    try {
+                      const storedResults = localStorage.getItem('testResults');
+                      const storedScores = localStorage.getItem('complianceScores');
+                      console.log('[DEBUG] localStorage testResults:', storedResults ? JSON.parse(storedResults) : null);
+                      console.log('[DEBUG] localStorage complianceScores:', storedScores ? JSON.parse(storedScores) : null);
+                      alert(`Found ${storedResults ? Object.keys(JSON.parse(storedResults)).length : 0} results in localStorage`);
+                    } catch (error) {
+                      console.error('[DEBUG] Error checking localStorage:', error);
+                    }
+                  }}
+                >
+                  Check localStorage
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => console.log({localResults, localScores, testResults, complianceScores})}
+                >
+                  Log Current State
+                </Button>
+              </Box>
+            </Box>
+          </Paper>
+        )}
       </PageLayout>
     );
   }
@@ -247,7 +585,12 @@ const ResultsPage = () => {
   const handleCompareRuns = () => {
     setCompareMode(true);
   };
-    
+  
+  // Add a direct API fetch debug button in the Debug State section
+  const handleDirectFetch = async () => {
+    // Delete this entire function - the API endpoint doesn't exist
+  };
+  
     return (
     <PageLayout title="Results Overview" actions={pageActions}>
       {/* Enhanced Search and Filter Bar */}
@@ -399,7 +742,7 @@ const ResultsPage = () => {
           <Grid item xs={12} md={6}>
             <Box sx={{ height: 300 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <RadarChart data={Object.entries(complianceScores).map(([category, scores]) => ({
+                <RadarChart data={Object.entries(effectiveScores).map(([category, scores]) => ({
                   category,
                   score: scores.total > 0 ? (scores.passed / scores.total) * 100 : 0
                 }))}>
@@ -422,7 +765,7 @@ const ResultsPage = () => {
       {/* Compliance by Category with enhanced visuals */}
       <Section title="Compliance by Category">
         <Grid container spacing={3}>
-          {Object.entries(complianceScores).map(([category, scores]) => {
+          {Object.entries(effectiveScores).map(([category, scores]) => {
             const categoryScore = scores.total > 0 ? (scores.passed / scores.total) * 100 : 0;
             
             return (
@@ -533,7 +876,7 @@ const ResultsPage = () => {
       >
         <Box sx={{ height: 300, mb: 4 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={Object.values(testResults).map(result => ({
+            <LineChart data={Object.values(effectiveResults).map(result => ({
               date: new Date(result.timestamp).toLocaleDateString(),
               score: result.overallScore,
               ...Object.fromEntries(
@@ -555,7 +898,7 @@ const ResultsPage = () => {
                 stroke="#8884d8"
                 strokeWidth={2}
               />
-              {Object.keys(complianceScores).map((category, index) => (
+              {Object.keys(effectiveScores).map((category, index) => (
                 <Line
                   key={category}
                   type="monotone"
@@ -570,7 +913,7 @@ const ResultsPage = () => {
         </Box>
         
         <TestResultTable 
-          results={testResults}
+          results={effectiveResults}
           filters={{
             category: filterCategory,
             status: filterStatus,
@@ -601,7 +944,7 @@ const ResultsPage = () => {
                   value={selectedRun || ''}
                   onChange={(e) => setSelectedRun(e.target.value)}
                 >
-                  {Object.values(testResults).map(result => (
+                  {Object.values(effectiveResults).map(result => (
                     <MenuItem key={result.id} value={result.id}>
                       {new Date(result.timestamp).toLocaleString()}
                     </MenuItem>
@@ -616,7 +959,7 @@ const ResultsPage = () => {
                   value={selectedRunToCompare || ''}
                   onChange={(e) => setSelectedRunToCompare(e.target.value)}
                 >
-                  {Object.values(testResults).map(result => (
+                  {Object.values(effectiveResults).map(result => (
                     <MenuItem key={result.id} value={result.id}>
                       {new Date(result.timestamp).toLocaleString()}
                     </MenuItem>

@@ -307,128 +307,38 @@ export const getTestCategories = async () => {
  * @returns {Promise<Object>} Test results and compliance scores
  */
 export const getTestResults = async (taskId) => {
+  if (!taskId) {
+    console.error('[TESTS-SERVICE] No task ID provided to getTestResults');
+    throw new Error('Task ID is required');
+  }
+  
+  console.log(`[TESTS-SERVICE] API endpoints not available, loading from localStorage: ${taskId}`);
+  
   try {
-    // If we already have results for this task, return them from cache
-    if (testResultsCache.has(taskId)) {
-      console.log('Returning test results from cache for task:', taskId);
-      
-      // Increment the count of consecutive identical results
-      consecutiveIdenticalResults++;
-      
-      // If we've gotten the same results multiple times, force a completed status
-      if (consecutiveIdenticalResults >= MAX_IDENTICAL_RESULTS) {
-        console.log(`Received identical results ${consecutiveIdenticalResults} times, marking as definitely completed`);
-        const cachedResults = testResultsCache.get(taskId);
-        return {
-          ...cachedResults,
-          cached: true,
-          status: 'completed',
-          definitely_completed: true
-        };
+    // Try to load results from localStorage instead
+    const storedResults = localStorage.getItem('testResults');
+    const storedScores = localStorage.getItem('complianceScores');
+    
+    if (!storedResults) {
+      console.warn('[TESTS-SERVICE] No results found in localStorage');
+      return null;
+    }
+    
+    const results = JSON.parse(storedResults);
+    const scores = storedScores ? JSON.parse(storedScores) : {};
+    
+    console.log(`[TESTS-SERVICE] Loaded ${Object.keys(results).length} results from localStorage`);
+    
+    // Return in a format similar to expected API response
+    return {
+      test_run: {
+        id: taskId,
+        results: results,
+        compliance_scores: scores
       }
-      
-      const cachedResults = testResultsCache.get(taskId);
-      // Add a flag to indicate these are cached results
-      return {
-        ...cachedResults,
-        cached: true,
-        status: 'completed'
-      };
-    }
-    
-    console.log('Fetching results for task from backend:', taskId);
-    
-    // Reset consecutive identical results counter when making a new request
-    consecutiveIdenticalResults = 0;
-    
-    // Validate the taskId before making API call
-    if (!taskId || taskId === 'undefined' || taskId === 'null') {
-      console.error('Invalid task ID provided:', taskId);
-      throw new Error('Invalid task ID provided to getTestResults');
-    }
-    
-    // Use API_BASE_URL from environment or fallback to default
-    const API_URL = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
-    console.log('Using API URL:', API_URL);
-    
-    // Updated to use the correct endpoint URL pattern with PATH parameter (not query parameter)
-    const resultsEndpoint = `${API_URL}/api/tests/results/${taskId}`;
-    console.log('Fetching results from:', resultsEndpoint);
-    
-    const response = await fetch(resultsEndpoint, fetchOptions);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Error response from results API (${response.status}):`, errorText);
-      throw new Error(`Failed to fetch test results: ${response.status} ${response.statusText}`);
-    }
-    
-    const data = await response.json();
-    console.log('Received test results from backend:', data);
-    
-    // Special handling based on the response format
-    let processedData = data;
-    
-    // Handle different response formats
-    // Case 1: Array directly
-    if (Array.isArray(data)) {
-      console.log('Results returned as an array, wrapping in expected format');
-      processedData = {
-        results: data,
-        status: 'completed'
-      };
-    } 
-    // Case 2: Object with results.results nested structure
-    else if (data.results && data.results.results) {
-      console.log('Results have double nesting, flattening structure');
-      processedData = {
-        results: data.results.results,
-        status: data.status || 'completed',
-        summary: data.summary || data.results.summary || null,
-        compliance_scores: data.compliance_scores || data.results.compliance_scores || null
-      };
-    }
-    // Case 3: Results with nested structure
-    else if (data.results && !Array.isArray(data.results)) {
-      console.log('Results are an object with nested properties');
-      processedData = {
-        results: Array.isArray(data.results) ? data.results : Object.values(data.results),
-        status: data.status || 'completed',
-        summary: data.summary || null,
-        compliance_scores: data.compliance_scores || null
-      };
-    }
-    
-    console.log('Processed data format:', processedData);
-    
-    // Ensure results is always an array
-    if (processedData.results && !Array.isArray(processedData.results)) {
-      processedData.results = Object.values(processedData.results);
-    }
-    
-    // Check if the results are complete and should be cached
-    if (processedData.results && processedData.results.length > 0) {
-      console.log('Caching test results for task:', taskId);
-      testResultsCache.set(taskId, processedData);
-      
-      // Add summary information if not present
-      if (!processedData.summary) {
-        const totalTests = processedData.results.length;
-        const passedTests = processedData.results.filter(
-          test => test.status === 'success' || test.status === 'passed'
-        ).length;
-        
-        processedData.summary = {
-          total_tests: totalTests,
-          passed: passedTests,
-          failed: totalTests - passedTests
-        };
-      }
-    }
-    
-    return processedData;
+    };
   } catch (error) {
-    console.error('Error fetching test results:', error);
-    throw error;
+    console.error('[TESTS-SERVICE] Error loading results from localStorage:', error);
+    throw new Error('Failed to load test results');
   }
 };

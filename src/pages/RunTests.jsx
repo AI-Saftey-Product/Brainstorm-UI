@@ -40,11 +40,14 @@ import SeverityChip from '../components/common/SeverityChip';
 import CategoryChip from '../components/common/CategoryChip.jsx';
 import ComplianceScoreGauge from '../components/common/ComplianceScoreGauge';
 import ProgressBar from '../components/common/ProgressBar';
-import { runTests, getTestResults } from '../services/testsService';
+import { runTests, getFilteredTests } from '../services/testsService';
 import { createModelAdapter } from '../services/modelAdapter';
 import { getSavedModelConfigs, getModelConfigById, saveTestResults as saveModelTestResults } from '../services/modelStorageService';
-import { getFilteredTests } from '../services/testsService';
 import websocketService from '../services/websocketService';
+import WebSocketService from '../services/websocketService';
+
+// Extract the TESTS_API_URL from environment for direct API calls
+const TESTS_API_URL = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
 
 // Color mapping for categories
 const CATEGORY_COLORS = {
@@ -60,6 +63,25 @@ const CATEGORY_COLORS = {
   'safety': '#c62828', // darker red
   'compliance': '#4527a0' // deep purple
 };
+
+// Add this at the top after imports
+console.log('[DEBUG-CRITICAL] RunTests.jsx loaded', new Date().toISOString());
+
+// Add this right after imports and constants
+// IMPORTANT: Debug code to catch fetch calls
+if (typeof window !== 'undefined') {
+  const originalFetch = window.fetch;
+  window.fetch = function(...args) {
+    // Only log calls to the problematic endpoint
+    if (args[0] && args[0].includes('api/test_runs')) {
+      console.log('[FETCH-DEBUG] Intercepted fetch call to api/test_runs:', args);
+      console.trace('[FETCH-DEBUG] Call stack:');
+      return Promise.reject(new Error(`API call to ${args[0]} blocked by intercept`));
+    }
+    return originalFetch.apply(this, args);
+  };
+  console.log('[FETCH-DEBUG] Fetch interception enabled');
+}
 
 const RunTestsPage = () => {
   const navigate = useNavigate();
@@ -112,6 +134,9 @@ const RunTestsPage = () => {
   // Add new state for test results data source
   const [testResultsDataSource, setTestResultsDataSource] = useState([]);
   
+  // Add currentTaskId state variable at the top of the component
+  const [currentTaskId, setCurrentTaskId] = useState('');
+  
   // Initialize test selection when component mounts
   useEffect(() => {
     // Priority: Tests from location state (from TestConfig page)
@@ -156,6 +181,110 @@ const RunTestsPage = () => {
       logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
     }
   }, [logs, verbose]);
+  
+  // DEBUG: Add effect to track changes to test results
+  useEffect(() => {
+    console.log('[RESULTS-DEBUG] Test results state updated:', testResults);
+    console.log('[RESULTS-DEBUG] Test results length:', testResults.length);
+    console.log('[RESULTS-DEBUG] Test complete state:', testComplete);
+  }, [testResults, testComplete]);
+  
+  // Add effect to periodically log WebSocket listeners during test execution
+  useEffect(() => {
+    let listenerCheckInterval = null;
+    
+    // Only run the interval when tests are running
+    if (runningTests) {
+      console.log('[LISTENER-DEBUG] Setting up listener check interval for test execution');
+      
+      // Log listeners immediately when tests start
+      logActiveListeners('Test execution started');
+      
+      // Set up interval to check listeners every 5 seconds during test execution
+      listenerCheckInterval = setInterval(() => {
+        logActiveListeners('Periodic check during test execution');
+      }, 5000);
+    }
+    
+    // Clean up interval when tests complete or component unmounts
+    return () => {
+      if (listenerCheckInterval) {
+        console.log('[LISTENER-DEBUG] Clearing listener check interval');
+        clearInterval(listenerCheckInterval);
+      }
+    };
+  }, [runningTests]);
+  
+  // Function to log active WebSocket listeners with detailed counts
+  const logActiveListeners = (stage) => {
+    console.log(`[LISTENER-DEBUG] === ACTIVE LISTENERS AT STAGE: ${stage} ===`);
+    
+    if (!websocketService) {
+      console.log('[LISTENER-DEBUG] WebSocket service is not available');
+      return;
+    }
+    
+    const listenerCounts = {};
+    let totalListeners = 0;
+    
+    // Count listeners for each event type
+    Object.entries(websocketService.eventListeners).forEach(([type, listeners]) => {
+      listenerCounts[type] = listeners.length;
+      totalListeners += listeners.length;
+    });
+    
+    console.log('[LISTENER-DEBUG] Total listeners:', totalListeners);
+    console.log('[LISTENER-DEBUG] Listener counts by type:', listenerCounts);
+    
+    // Log detailed info about critical listeners
+    const criticalEvents = ['test_complete', 'test_result', 'message'];
+    criticalEvents.forEach(eventType => {
+      const listeners = websocketService.eventListeners[eventType] || [];
+      console.log(`[LISTENER-DEBUG] ${eventType} listeners (${listeners.length}):`);
+      
+      // For each listener, log a signature to help identify it
+      listeners.forEach((listener, index) => {
+        const functionString = listener.toString().slice(0, 50) + '...';
+        console.log(`[LISTENER-DEBUG]   #${index + 1}: ${functionString}`);
+      });
+    });
+    
+    // Log connection state
+    console.log('[LISTENER-DEBUG] WebSocket connected:', websocketService.isConnected());
+    console.log('[LISTENER-DEBUG] WebSocket instance ID:', websocketService.instanceId);
+  };
+  
+  // Add cleanup effect to disconnect WebSocket when leaving the page
+  useEffect(() => {
+    // This will run when the component unmounts
+    return () => {
+      console.log('[RESULTS-DEBUG] Component unmounting, disconnecting WebSocket');
+      
+      // Check if the WebSocket is connected before disconnecting
+      if (websocketService.isConnected()) {
+        console.log('[RESULTS-DEBUG] WebSocket is connected, disconnecting...');
+        
+        // If test is complete, make sure results are saved before disconnecting
+        if (testComplete && testResults.length > 0) {
+          console.log('[RESULTS-DEBUG] Test is complete with results, ensuring data is saved');
+          
+          // Save test results to context one last time to be safe
+          if (typeof saveTestResults === 'function') {
+            console.log('[RESULTS-DEBUG] Saving test results to context before disconnect');
+            saveTestResults(testResults, complianceScores);
+          }
+        }
+        
+        // Disconnect but don't reset the WebSocket service to preserve persistent handlers
+        websocketService.disconnect();
+      } else {
+        console.log('[RESULTS-DEBUG] WebSocket is not connected, no need to disconnect');
+      }
+      
+      // Don't reset the WebSocket service on unmount to preserve persistent handlers
+      console.log('[RESULTS-DEBUG] Component unmounting, but preserving websocket event handlers');
+    };
+  }, [testComplete, testResults, complianceScores, saveTestResults]);
   
   const addLog = (message) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -337,9 +466,18 @@ const RunTestsPage = () => {
     setLogs([]);
     addLog('Starting test run...');
     
+    // Log listeners before WebSocket reset
+    logActiveListeners('Before WebSocket reset');
+    
     // Reset WebSocket service completely to ensure clean state
     websocketService.reset();
     addLog('WebSocket service reset to ensure clean state');
+    
+    // Log listeners after WebSocket reset
+    logActiveListeners('After WebSocket reset');
+    
+    // DEBUG: Check WebSocket state before test run
+    debugWebSocketState();
     
     // Debug logging for model adapter
     console.log('Model adapter state before running tests:', modelAdapter);
@@ -380,55 +518,9 @@ const RunTestsPage = () => {
       console.log('Test configuration being sent to API:', testConfig);
       addLog(`Preparing test configuration with model ID: ${testConfig.model_id}`);
       
-      // Setup variables for tracking results
-      let completed = false;
-      let results = {};
-      let scores = {};
-      
       try {
-        // STEP 1: First connect to WebSocket without a task ID to get a new test run ID
-        addLog('Connecting to WebSocket to get test run ID...');
-        const wsResponse = await websocketService.connect();
-        
-        // Extract test run ID from WebSocket response
-        if (!wsResponse || !wsResponse.test_run_id) {
-          throw new Error('Failed to get test run ID from WebSocket');
-        }
-        
-        const testRunId = wsResponse.test_run_id;
-        addLog(`Received test run ID from WebSocket: ${testRunId}`);
-        
-        // STEP 2: Now run the tests using the test run ID from the WebSocket
-        addLog(`Starting tests with test run ID: ${testRunId}...`);
-        const taskId = await runTests(
-          selectedTests,
-          testConfig,
-          { ...testParameters, test_run_id: testRunId },
-          verbose ? logCallback : null
-        );
-        
-        // Validate task ID
-        if (!taskId) {
-          throw new Error('No task ID returned from the API. Test run could not be initiated.');
-        }
-        
-        addLog(`Test run initiated with task ID: ${taskId}`);
-        
-        // Verify the task ID matches the test run ID from WebSocket
-        if (taskId !== testRunId) {
-          addLog(`Warning: Task ID from API (${taskId}) differs from WebSocket test run ID (${testRunId}). Using WebSocket ID for monitoring.`);
-        }
-        
-        // The WebSocket connection is already established - no need to reconnect
-
-        // Set up a promise that will resolve when test completion is received
-        const testCompletionPromise = new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            reject(new Error('Timeout waiting for test completion'));
-          }, 300000); // 5 minutes timeout
-
           // Create a reusable handler function that processes any message type
-          const processMessage = (data) => {
+          const processMessage = async (data) => {
             console.log('HANDLER CALLED: Processing message:', data);
             
             // If data doesn't have a type but is a string, try to parse it
@@ -464,9 +556,18 @@ const RunTestsPage = () => {
                 
               case 'test_result':
                 console.log('SWITCH CASE: Processing test_result message', data);
+                // Log listeners when we receive a test result
+                logActiveListeners('Received test_result message');
+              
                 // Handle individual test results
                 const { test_id, test_name, status, score } = data;
                 addLog(`Test completed: ${test_name} - ${status} (Score: ${score})`);
+                
+                // Validate the test result data
+                if (!test_id || !test_name) {
+                  console.warn('[RESULTS-DEBUG] Received invalid test_result data:', data);
+                  return;
+                }
                 
                 // Update the UI with the test result by adding it to the array
                 setTestResults(prevResults => {
@@ -476,13 +577,15 @@ const RunTestsPage = () => {
                   // Check if this test is already in the results
                   const testIndex = newResults.findIndex(r => r.test_id === test_id);
                   
+                  // Update or add the test result
                   if (testIndex !== -1) {
                     // Update existing test result
                     newResults[testIndex] = {
                       ...newResults[testIndex],
                       status,
                       score,
-                      completed: true
+                      completed: true,
+                      test_category: data.test_category || newResults[testIndex].test_category || 'unknown'
                     };
                   } else {
                     // Add new test result
@@ -495,116 +598,273 @@ const RunTestsPage = () => {
                       // Add other properties if available in the data
                       test_category: data.test_category || 'unknown',
                       issues_found: data.issues_found || 0,
-                      metrics: data.metrics || {}
+                      metrics: data.metrics || {},
+                      created_at: new Date().toISOString()
                     });
                   }
+                  
+                  console.log('[RESULTS-DEBUG] Updated test results array now has', newResults.length, 'items');
+                  
+                  // If we're receiving individual test results, also construct a proper results object
+                  // and save it to context immediately (don't wait for test_complete)
+                  if (newResults.length > 0) {
+                    console.log('[RESULTS-DEBUG] Creating results object from individual test result');
+                    
+                    // Format results for context using the same structure as in processTestResults
+                    const resultsObject = {};
+                    newResults.forEach(result => {
+                      if (result && result.test_id) {
+                        // Format expected by Results page
+                        resultsObject[result.test_id] = {
+                          test: {
+                            id: result.test_id,
+                            name: result.test_name,
+                            category: result.test_category,
+                            description: result.description || `Test for ${result.test_name}`,
+                            severity: result.severity || 'medium'
+                          },
+                          result: {
+                            pass: result.status === 'success' || result.status === 'passed',
+                            score: result.score,
+                            message: result.message || (result.status === 'success' ? 'Test passed successfully' : 'Test failed'),
+                            details: result.analysis || {},
+                            issues_found: result.issues_found || 0,
+                            metrics: result.metrics || {},
+                            timestamp: result.created_at || new Date().toISOString()
+                          }
+                        };
+                      }
+                    });
+                    
+                    // Calculate scores from results
+                    const scoresData = {};
+                    Object.values(resultsObject).forEach(item => {
+                      if (!item || !item.test || !item.test.category) return;
+                      
+                      const category = item.test.category;
+                      if (!scoresData[category]) {
+                        scoresData[category] = { total: 0, passed: 0 };
+                      }
+                      
+                      scoresData[category].total++;
+                      if (item.result && item.result.pass) {
+                        scoresData[category].passed++;
+                      }
+                    });
+                    
+                    console.log('[RESULTS-DEBUG] Saving preliminary results from test_result event:', 
+                      Object.keys(resultsObject).length, 'tests');
+                    console.log('[RESULTS-DEBUG] Saving preliminary scores for', 
+                      Object.keys(scoresData).length, 'categories');
+                    
+                    // Save the current taskId so we can retrieve it when the test completes
+                    if (taskId) {
+                      // Save to localStorage instead of database
+                      try {
+                        localStorage.setItem('testResults', JSON.stringify(resultsObject));
+                        localStorage.setItem('complianceScores', JSON.stringify(scoresData || {}));
+                        console.log('[RESULTS-DEBUG] Individual test results saved to localStorage');
+                      } catch (error) {
+                        console.error('[RESULTS-DEBUG] Failed to save test results to localStorage:', error);
+                      }
+                    }
+                    
+                    // Update state with the formatted results object
+                    setTestResultsDataSource({
+                      taskId: taskId,
+                      results: resultsObject,
+                      scores: scoresData
+                    });
+                    
+                    // Also update context for backward compatibility
+                    if (typeof saveTestResults === 'function') {
+                      saveTestResults(resultsObject, scoresData);
+                    }
+                  }
+                  
                   return newResults;
                 });
                 break;
                 
               case 'test_complete':
-                console.log('SWITCH CASE: Processing test_complete message', data);
-                // Handle test completion
-                console.log('Test completion received:', data);
-                clearTimeout(timeout);
-                websocketService.off('message', processMessage);
-                websocketService.off('test_complete', processMessage);
-                websocketService.off('test_result', processMessage);
-                websocketService.off('test_status_update', processMessage);
-                websocketService.off('test_failed', processMessage);
-                
-                // Mark that test is complete, but keep runningTests true until we've processed results
-                setTestComplete(true);
-                
-                // If results are available, fetch them
-                if (data.results_available) {
-                  console.log('SWITCH CASE: results_available is true, fetching results');
-                  addLog('Test results available, fetching full results...');
-                  console.log('ATTEMPTING TO FETCH RESULTS FOR TEST RUN ID:', testRunId);
+                (async () => {
+                  console.log('SWITCH CASE: Processing test_complete message', data);
+                  console.log('[CRITICAL-DEBUG] Full test_complete message:', JSON.stringify(data, null, 2));
                   
-                  // Add retry logic - try up to 3 times if fetching fails
-                  let retryCount = 0;
-                  const maxRetries = 3;
+                  // Mark test as complete first to update UI state
+                  setTestComplete(true);
                   
-                  const fetchWithRetry = async () => {
-                    try {
-                      console.log('STARTING FETCH ATTEMPT', retryCount + 1);
-                      const results = await getTestResults(testRunId);
-                      console.log('FETCH SUCCEEDED, RESULTS:', results);
-                      addLog('Full test results received');
-                      console.log('Results from getTestResults:', results);
-                      processTestResults(results);
-                      // Only set runningTests to false AFTER we've processed results
-                      setRunningTests(false);
-                      resolve(results);
-                    } catch (error) {
-                      console.log('FETCH FAILED:', error.message);
-                      retryCount++;
-                      console.error(`Error fetching test results (attempt ${retryCount}/${maxRetries}):`, error);
-                      if (retryCount < maxRetries) {
-                        addLog(`Retry ${retryCount}/${maxRetries} fetching results...`);
-                        // Wait a bit longer between each retry
-                        setTimeout(fetchWithRetry, 2000 * retryCount);
-                      } else {
-                        console.error('Max retries reached, giving up');
-                        addLog('Failed to fetch results after multiple attempts');
-                        // Even if we fail, we should set runningTests to false
-                        setRunningTests(false);
-                        reject(error);
+                  // Extract test run ID from the response
+                  const taskId = data.task_id || data.id || data.test_run_id;
+                  console.log('[CRITICAL-DEBUG] Task ID from test_complete message:', taskId);
+                  
+                  // Save the task ID in component state for the "Show Results" button
+                  setCurrentTaskId(taskId);
+                  
+                  // Initialize results object
+                  let resultsForNavigation = {};
+                  let scoresForNavigation = {};
+                  
+                  // Case 1: Results in test_run structure (most common format)
+                  if (data.test_run && typeof data.test_run === 'object') {
+                    console.log('[CRITICAL-DEBUG] Found test_run object in response');
+                    
+                    // Case 1.1: test_run contains results with test_results (newest format)
+                    if (data.test_run.results && data.test_run.results.test_results) {
+                      console.log('[CRITICAL-DEBUG] Found test_results in test_run.results');
+                      resultsForNavigation = data.test_run.results.test_results;
+                    } 
+                    // Case 1.2: test_run contains test_results directly
+                    else if (data.test_run.test_results) {
+                      console.log('[CRITICAL-DEBUG] Found test_results directly in test_run');
+                      resultsForNavigation = data.test_run.test_results;
+                    }
+                    // Case 1.3: test_run contains results directly
+                    else if (data.test_run.results) {
+                      console.log('[CRITICAL-DEBUG] Found results in test_run');
+                      resultsForNavigation = data.test_run.results;
+                    }
+                    
+                    // Extract scores if available
+                    if (data.test_run.compliance_scores) {
+                      scoresForNavigation = data.test_run.compliance_scores;
+                    }
+                  }
+                  // Case 2: Results in top-level results object
+                  else if (data.results) {
+                    console.log('[CRITICAL-DEBUG] Found results at top level');
+                    
+                    // Case 2.1: results contains test_results
+                    if (data.results.test_results) {
+                      console.log('[CRITICAL-DEBUG] Found test_results in results');
+                      resultsForNavigation = data.results.test_results;
+                    } else {
+                      // Case 2.2: results is the results object
+                      resultsForNavigation = data.results;
+                    }
+                    
+                    // Extract scores if available
+                    if (data.scores) {
+                      scoresForNavigation = data.scores;
+                    }
+                  }
+                  
+                  // Check if we got results
+                  if (resultsForNavigation && Object.keys(resultsForNavigation).length > 0) {
+                    console.log('[CRITICAL-DEBUG] Successfully extracted results:', resultsForNavigation);
+                    
+                    // Check if results need conversion to the expected format with test and result properties
+                    const sampleKey = Object.keys(resultsForNavigation)[0];
+                    const sampleValue = resultsForNavigation[sampleKey];
+                    
+                    // If results don't have the expected structure, convert them
+                    if (!sampleValue || !sampleValue.test || !sampleValue.result) {
+                      console.log('[CRITICAL-DEBUG] Results need conversion to test/result format');
+                      
+                      const formattedResults = {};
+                      Object.entries(resultsForNavigation).forEach(([key, value]) => {
+                        // If it's an object with non-null value
+                        if (value && typeof value === 'object') {
+                          formattedResults[key] = {
+                            test: {
+                              id: key,
+                              name: value.test_name || value.name || key,
+                              category: value.category || value.test_category || 'unknown',
+                              description: value.description || '',
+                              severity: value.severity || 'medium'
+                            },
+                            result: {
+                              pass: value.status === 'success' || value.status === 'passed' || value.pass === true,
+                              score: value.score || 0,
+                              message: value.message || '',
+                              details: value.details || value.analysis || {},
+                              timestamp: value.created_at || value.timestamp || new Date().toISOString()
+                            }
+                          };
+                        }
+                      });
+                      
+                      // Use formatted results if we have any
+                      if (Object.keys(formattedResults).length > 0) {
+                        resultsForNavigation = formattedResults;
                       }
                     }
-                  };
-                  
-                  fetchWithRetry();
-                } else {
-                  console.log('SWITCH CASE: results_available is false, starting polling');
-                  addLog('No results available yet, will poll for results...');
-                  // Start polling for results
-                  const pollInterval = setInterval(async () => {
+                    
+                    // Also save to localStorage for persistence
                     try {
-                      console.log('POLLING: Fetching results...');
-                      const results = await getTestResults(testRunId);
-                      console.log('POLLING: Received results:', results);
-                      if (results && results.length > 0) {
-                        console.log('POLLING: Valid results received, clearing interval');
-                        clearInterval(pollInterval);
-                        addLog('Results received through polling');
-                        console.log('Results from polling:', results);
-                        processTestResults(results);
-                        // Only set runningTests to false AFTER we've processed results
-                        setRunningTests(false);
-                        resolve(results);
-                      } else {
-                        console.log('POLLING: No results yet, continuing to poll');
-                      }
+                      localStorage.setItem('testResults', JSON.stringify(resultsForNavigation));
+                      localStorage.setItem('complianceScores', JSON.stringify(scoresForNavigation || {}));
+                      console.log('[CRITICAL-DEBUG] Saved results to localStorage');
                     } catch (error) {
-                      console.error('POLLING: Error polling for results:', error);
-                      clearInterval(pollInterval);
-                      // Even if we fail, we should set runningTests to false
-                      setRunningTests(false);
-                      reject(error);
+                      console.error('[CRITICAL-DEBUG] Error saving to localStorage:', error);
                     }
-                  }, 5000); // Poll every 5 seconds
-                }
+                    
+                    // Prepare data for navigation
+                    const navigationState = {
+                      taskId,
+                      results: resultsForNavigation,
+                      scores: scoresForNavigation
+                    };
+                    
+                    // Log what we're passing to the Results page
+                    console.log('[CRITICAL-DEBUG] Navigation state:', {
+                      taskId,
+                      resultsCount: Object.keys(resultsForNavigation).length,
+                      scoresCount: Object.keys(scoresForNavigation).length
+                    });
+                    
+                    // Navigate to Results page with the data
+                    setRunningTests(false);
+                    if (typeof saveTestResults === 'function') {
+                      saveTestResults(resultsForNavigation, scoresForNavigation);
+                      console.log('[CRITICAL-DEBUG] Saved results to context');
+                    } else {
+                      console.error('[CRITICAL-DEBUG] saveTestResults function not available!');
+                    }
+                    navigate('/results', { state: navigationState });
+                  } else {
+                    console.log('[CRITICAL-DEBUG] No results found in WebSocket message');
+                    setError('No test results were extracted from the WebSocket response. Check logs for details.');
+                    setRunningTests(false);
+                    
+                    // Still navigate to results with the taskId so we can see debug info
+                    console.log('[CRITICAL-DEBUG] Navigating to Results with taskId only for debugging');
+                    navigate('/results', { state: { taskId } });
+                  }
+                })().catch(err => {
+                  console.error('[CRITICAL-DEBUG] Error in test_complete handler:', err);
+                  setError('Error processing test completion: ' + err.message);
+                  setRunningTests(false);
+                });
                 break;
                 
               case 'test_failed':
                 console.log('SWITCH CASE: Processing test_failed message', data);
+              // Log listeners when we receive a test failed message
+              logActiveListeners('Received test_failed message');
+              
                 // Handle test failure
                 console.error('Test failed:', data);
-                clearTimeout(timeout);
-                websocketService.off('message', processMessage);
-                websocketService.off('test_complete', processMessage);
-                websocketService.off('test_result', processMessage);
-                websocketService.off('test_status_update', processMessage);
-                websocketService.off('test_failed', processMessage);
-                reject(new Error(data.message || 'Test failed'));
+              setError(`Test failed: ${data.message || 'Unknown error'}`);
+              setRunningTests(false);
                 break;
                 
               case 'connection_established':
                 console.log('SWITCH CASE: Processing connection_established message', data);
+              // Log listeners when connection is established
+              logActiveListeners('Connection established');
+              
                 // Handle connection established
-                addLog(`WebSocket connection established for test run ID: ${testRunId}`);
+              addLog(`WebSocket connection established for test run ID: ${data.test_run_id}`);
+              break;
+              
+            case 'test_started':
+              console.log('SWITCH CASE: Processing test_started message', data);
+              // Log listeners when a test starts
+              logActiveListeners('Test started');
+              
+              // Handle test started
+              addLog(`Test started: ${data.test_name} (${data.test_category})`);
                 break;
                 
               default:
@@ -615,34 +875,73 @@ const RunTestsPage = () => {
             }
           };
           
-          // Register both generic and specific event handlers to catch all messages
-          websocketService.on('message', processMessage);
-          
-          // Also register for specific event types to catch direct emits
-          websocketService.on('test_status_update', processMessage);
-          websocketService.on('test_result', processMessage);
-          websocketService.on('test_complete', processMessage);
-          websocketService.on('test_failed', processMessage);
-        });
+        // Register message handlers BEFORE connecting to WebSocket
+        // Use persistentOn instead of on to keep handlers across resets/reconnections
+        websocketService.persistentOn('message', processMessage);
+        websocketService.persistentOn('test_status_update', processMessage);
+        websocketService.persistentOn('test_result', processMessage);
+        websocketService.persistentOn('test_complete', processMessage);
+        websocketService.persistentOn('test_failed', processMessage);
+        websocketService.persistentOn('test_started', processMessage);
         
-        // Wait for test completion
-        await testCompletionPromise;
+        // DEBUG: Check handlers are registered
+        debugWebSocketState();
         
-        // Only disconnect after we've fully processed the results
-        addLog('Test complete - keeping WebSocket connection open until results are fully processed');
-        setTestComplete(true);
+        // Log listeners after registering handlers
+        logActiveListeners('After registering WebSocket event handlers');
         
-        // Navigate to results page
-        navigate('/results');
+        // STEP 1: First connect to WebSocket without a task ID to get a new test run ID
+        addLog('Connecting to WebSocket to get test run ID...');
+        const wsResponse = await websocketService.connect();
+        
+        // Log listeners after WebSocket connection
+        logActiveListeners('After WebSocket connection established');
+        
+        // Extract test run ID from WebSocket response
+        if (!wsResponse || !wsResponse.test_run_id) {
+          throw new Error('Failed to get test run ID from WebSocket');
+        }
+        
+        const testRunId = wsResponse.test_run_id;
+        addLog(`Received test run ID from WebSocket: ${testRunId}`);
+        
+        // STEP 2: Now run the tests using the test run ID from the WebSocket
+        addLog(`Starting tests with test run ID: ${testRunId}...`);
+        const taskId = await runTests(
+          selectedTests,
+          testConfig,
+          { ...testParameters, test_run_id: testRunId },
+          verbose ? logCallback : null
+        );
+        
+        // Validate task ID
+        if (!taskId) {
+          throw new Error('No task ID returned from the API. Test run could not be initiated.');
+        }
+        
+        addLog(`Tests initiated successfully with task ID: ${taskId}`);
+        console.log('[CRITICAL-DEBUG] Task ID from initiate test response:', taskId);
+
+        // Save task ID for future reference
+        setCurrentTaskId(taskId);
+        ensureTaskIdForResults(taskId);
+
+        // Tests will now be executed and results will be received via WebSocket events
+        addLog('Tests started. Waiting for results via WebSocket...');
+        
+        // Also ensure saveTestResults is called properly in test_complete handler
+        if (typeof saveTestResults === 'function') {
+          saveTestResults(resultsForNavigation, scoresForNavigation);
+          console.log('[CRITICAL-DEBUG] Saved results to context');
+        } else {
+          console.error('[CRITICAL-DEBUG] saveTestResults function not available!');
+        }
       } catch (error) {
         // Handle any errors during test execution
         addLog(`Error during test execution: ${error.message}`);
         setError(`Test execution failed: ${error.message}`);
         // Always set runningTests to false in case of error
         setRunningTests(false);
-      } finally {
-        // Don't disconnect here, let the cleanup effect handle it
-        // NOTE: DON'T set runningTests to false here - it's already been handled elsewhere
       }
     } catch (error) {
       // Handle errors in test initialization
@@ -847,282 +1146,262 @@ const RunTestsPage = () => {
    * @param {Object} scoresData - The compliance scores data
    */
   const processTestResults = (resultsData, scoresData) => {
-    console.log('Raw results received:', resultsData);
-    console.log('Raw scores received:', scoresData);
+    console.log('[RESULTS-DEBUG] Processing test results:', resultsData);
     
-    // Get existing results we've already collected from WebSocket messages
-    let existingResults = testResults || [];
-    console.log('Existing results from WebSocket messages:', existingResults);
-    
-    // Handle different result structures
-    let results = [];
-    let scores = scoresData;
-    
-    // If we're handling API results (not individual WebSocket results)
-    if (resultsData) {
-      // Special case for the problematic structure we're seeing in logs
-      if (resultsData && resultsData.results && 
-          typeof resultsData.results === 'object' && 
-          resultsData.results.results && 
-          Array.isArray(resultsData.results.results)) {
-        console.log('Found double-nested structure, extracting results array', resultsData.results.results);
-        results = resultsData.results.results;
-        
-        // Also extract compliance scores if available
-        if (resultsData.results.compliance_scores) {
-          console.log('Extracting compliance scores from double-nested structure');
-          scores = resultsData.results.compliance_scores;
-        }
-      }
-      // Continue with normal handling if the special case doesn't apply
-      else if (resultsData && resultsData.results) {
-        // We have a nested structure
-        console.log('Found nested results structure:', resultsData.results);
-        
-        // Check if results is nested inside another results object
-        if (resultsData.results.results && Array.isArray(resultsData.results.results)) {
-          console.log('Found double-nested results structure:', resultsData.results.results);
-          results = resultsData.results.results;
-          
-          // If scores aren't provided separately, use the ones in results
-          if (!scoresData && resultsData.results.compliance_scores) {
-            console.log('Using compliance scores from double-nested structure:', resultsData.results.compliance_scores);
-            scores = resultsData.results.compliance_scores;
-          }
-        }
-        // Or it might be returning a structure like {results: [...]}
-        else if (Array.isArray(resultsData.results)) {
-          console.log('Found nested results structure:', resultsData.results);
-          results = resultsData.results;
-          
-          // If scores aren't provided separately, use the ones in results
-          if (!scoresData && resultsData.compliance_scores) {
-            console.log('Using compliance scores from nested structure:', resultsData.compliance_scores);
-            scores = resultsData.compliance_scores;
-          }
-        }
-        // Or the results field might be an object with test IDs as keys
-        else if (typeof resultsData.results === 'object' && !Array.isArray(resultsData.results)) {
-          console.log('Results is an object, converting to array:', resultsData.results);
-          results = Object.values(resultsData.results);
-        }
-      } else if (Array.isArray(resultsData)) {
-        // Results is directly an array
-        console.log('Results is directly an array of length:', resultsData.length);
-        results = resultsData;
-      } else {
-        console.log('Using existing results collected from WebSocket messages');
-        results = existingResults;
-      }
-    } else {
-      // If no API results, use what we've collected
-      console.log('No API results, using existing results collected from WebSocket');
-      results = existingResults;
+    if (!resultsData) {
+      console.error('[RESULTS-DEBUG] No results data received');
+      return {};
     }
     
-    // Merge any API results with existing WebSocket results
-    if (results.length > 0 && existingResults.length > 0) {
-      console.log('Merging API results with WebSocket results');
-      
-      // Create a map of test IDs we already have
-      const existingTestIds = new Set(existingResults.map(r => r.test_id));
-      
-      // Add only results we don't already have
-      results.forEach(result => {
-        if (!existingTestIds.has(result.test_id)) {
-          existingResults.push(result);
-        }
-      });
-      
-      // Use the merged results
-      results = existingResults;
-    }
-    
-    // Ensure results is an array
-    if (!Array.isArray(results)) {
-      console.error('Results is not an array after processing:', results);
-      
-      // Try one more level of extraction for specific API response formats
-      if (results && typeof results === 'object') {
-        // For {results: Array} format
-        if (results.results && Array.isArray(results.results)) {
-          console.log('Extracting results array from inner results property');
-          results = results.results;
-        }
-        // For object with test ID keys
-        else {
-          console.log('Converting results object to array');
-          results = Object.values(results);
-        }
-      }
-      
-      // Final check that results is an array
-      if (!Array.isArray(results)) {
-        console.error('Failed to extract results array from data:', results);
-        setError('Invalid test results format: could not extract results array');
-        return;
-      }
-    }
-    
-    console.log('Processing results array of length:', results.length);
-    
-    // Calculate overall results
-    // If scores is not provided or is invalid, calculate them from the results
-    if (!scores || typeof scores !== 'object') {
-      console.log('No scores provided, calculating from results');
-      scores = {};
-      
-      // Group results by category and calculate scores
-      results.forEach(item => {
-        if (!item || !item.test_category) return;
+    try {
+      // Check if results are in test_run property (new API format)
+      if (resultsData.test_run && resultsData.test_run.results) {
+        console.log('[RESULTS-DEBUG] Found results in test_run object, using these instead');
+        const testRun = resultsData.test_run;
+        resultsData = testRun.results;
         
-        const category = item.test_category;
-        if (!scores[category]) {
-          scores[category] = { total: 0, passed: 0 };
+        // Also update scores if available
+        if (testRun.compliance_scores) {
+          scoresData = testRun.compliance_scores;
         }
-        
-        scores[category].total++;
-        if (item.status === 'success' || item.status === 'passed') {
-          scores[category].passed++;
-        }
-      });
-      console.log('Calculated scores:', scores);
-    }
-    
-    // Process and store test results - handle array structure
-    const processedResults = results.map(item => {
-      console.log('Processing item:', item);
-      if (!item) {
-        console.warn('Invalid item in results:', item);
-        return null;
       }
       
-      return {
-        id: item.test_id,
-        test_id: item.test_id,
-        test_name: item.test_name,
-        test_category: item.test_category,
-        status: item.status,
-        score: item.score,
-        issues_found: item.issues_found,
-        metrics: item.metrics || {},
-        created_at: item.created_at,
-        analysis: item.analysis || {}
-      };
-    }).filter(Boolean); // Remove any null items
-
-    console.log('Processed results array length:', processedResults.length);
-    
-    // Set the data source for the table
-    setTestResultsDataSource(processedResults);
-    console.log('Updated testResultsDataSource with processed results');
-    
-    // Save results to context - convert array to object format expected by Results.jsx
-    const resultsObject = processedResults.reduce((acc, item) => {
-      if (item && item.test_id) {
-        // Create the nested structure expected by TestResultTable component
-        acc[item.test_id] = {
-          test: {
-            id: item.test_id,
-            name: item.test_name,
-            category: item.test_category,
-            description: item.description || `Test for ${item.test_name}`,
-            severity: item.severity || 'medium'
-          },
-          result: {
-            pass: item.status === 'success' || item.status === 'passed',
-            score: item.score,
-            message: item.message || (item.status === 'success' ? 'Test passed successfully' : 'Test failed'),
-            details: item.analysis || item.issues_found || {},
-            metrics: item.metrics || {},
-            timestamp: item.created_at
-          }
+      // Check for deeply nested test_results (new response format)
+      if (resultsData.results && resultsData.results.test_results) {
+        console.log('[RESULTS-DEBUG] Found test_results in results object:', resultsData.results.test_results);
+        console.log('[CRITICAL-DEBUG] test_results object structure:', JSON.stringify(resultsData.results.test_results, null, 2));
+        
+        // Also save metrics from the results object
+        const metrics = {
+          total_tests: resultsData.results.total_tests || 0,
+          completed_tests: resultsData.results.completed_tests || 0,
+          failed_tests: resultsData.results.failed_tests || 0
         };
+        
+        // This format already has test and result properties
+        resultsData = resultsData.results.test_results;
+        
+        // If this format already has the right structure, we can return it directly
+        if (typeof resultsData === 'object' && !Array.isArray(resultsData)) {
+          const sampleKey = Object.keys(resultsData)[0];
+          const sampleValue = resultsData[sampleKey];
+          
+          if (sampleValue && sampleValue.test && sampleValue.result) {
+            console.log('[RESULTS-DEBUG] Results already in correct format, using directly');
+            // This data already has the correct structure, so we can use it directly
+            
+            // Update the test results state with raw test results
+            setTestResults(Object.values(resultsData).map(item => ({
+              test_id: item.test.id,
+              test_name: item.test.name,
+              test_category: item.test.category,
+              status: item.result.pass ? 'success' : 'failed',
+              score: item.result.score,
+              ...item
+            })));
+            
+            // Set compliance scores if available
+            if (scoresData) {
+              console.log('[RESULTS-DEBUG] Setting compliance scores:', scoresData);
+              setComplianceScores(scoresData);
+            }
+            
+            // Save properly formatted object to context
+            saveTestResults(resultsData, scoresData || {});
+            console.log('[RESULTS-DEBUG] Saved test results to context directly');
+            
+            // Mark tests as completed
+            setTestComplete(true);
+            
+            // For model-specific results, also save to local storage
+            if (modelConfig && modelConfig.id) {
+              try {
+                console.log('[RESULTS-DEBUG] Saving model test results to local storage for model ID:', modelConfig.id);
+                saveModelTestResults(modelConfig.id, Object.values(resultsData).map(item => ({
+                  test_id: item.test.id,
+                  test_name: item.test.name,
+                  test_category: item.test.category,
+                  status: item.result.pass ? 'success' : 'failed',
+                  score: item.result.score,
+                  ...item
+                })));
+              } catch (e) {
+                console.error('[RESULTS-DEBUG] Error saving model test results:', e);
+              }
+            }
+            
+            return resultsData;
+          }
+        }
       }
-      return acc;
-    }, {});
-    
-    console.log('Results object formatted for UI with keys:', Object.keys(resultsObject));
-    console.log('Compliance scores formatted for UI:', scores);
-    
-    // Save to context
-    console.log('About to save results to context, saveTestResults function exists:', typeof saveTestResults === 'function');
-    
-    if (typeof saveTestResults === 'function') {
-      try {
-        saveTestResults(resultsObject, scores);
-        console.log('Successfully saved results and scores to app context');
-      } catch (error) {
-        console.error('Error saving results to context:', error);
-        addLog(`Error saving results: ${error.message}`);
+      
+      // Normalize results format
+      let normalizedResults = resultsData;
+      
+      // If resultsData is an object with a 'results' property, use that
+      if (!Array.isArray(resultsData) && resultsData.results) {
+        console.log('[RESULTS-DEBUG] Results data is in object format with results property');
+        normalizedResults = resultsData.results;
       }
-    } else {
-      console.error('saveTestResults is not a function');
-      addLog('Error: Could not save test results - function not available');
+      
+      // If results is still not an array, make it one
+      if (!Array.isArray(normalizedResults)) {
+        console.warn('[RESULTS-DEBUG] Results data is not an array, attempting to convert');
+        // Convert object to array if it's an object of test objects
+        if (typeof normalizedResults === 'object') {
+          normalizedResults = Object.values(normalizedResults);
+        } else {
+          normalizedResults = [normalizedResults];
+        }
+      }
+      
+      console.log('[RESULTS-DEBUG] Normalized results:', normalizedResults);
+      
+      // Update the test results state
+      setTestResults(normalizedResults);
+      
+      // Process compliance scores if available
+      if (scoresData) {
+        console.log('[RESULTS-DEBUG] Setting compliance scores:', scoresData);
+        setComplianceScores(scoresData);
+      } else if (resultsData.scores) {
+        console.log('[RESULTS-DEBUG] Setting compliance scores from results data:', resultsData.scores);
+        setComplianceScores(resultsData.scores);
+      }
+      
+      // IMPORTANT FIX: Convert array to object with test_id as keys for Results page compatibility
+      const resultsObject = {};
+      normalizedResults.forEach(result => {
+        if (result && result.test_id) {
+          // Format expected by Results page
+          resultsObject[result.test_id] = {
+            test: {
+              id: result.test_id,
+              name: result.test_name,
+              category: result.test_category,
+              description: result.description || `Test for ${result.test_name}`,
+              severity: result.severity || 'medium'
+            },
+            result: {
+              pass: result.status === 'success' || result.status === 'passed',
+              score: result.score,
+              message: result.message || (result.status === 'success' ? 'Test passed successfully' : 'Test failed'),
+              details: result.analysis || {},
+              issues_found: result.issues_found || 0,
+              metrics: result.metrics || {},
+              timestamp: result.created_at || new Date().toISOString()
+            }
+          };
+        }
+      });
+      
+      console.log('[RESULTS-DEBUG] Formatted results for context:', resultsObject);
+      
+      // Save properly formatted object to context
+      saveTestResults(resultsObject, scoresData || resultsData.scores || {});
+      console.log('[RESULTS-DEBUG] Saved test results to context');
+      
+      // Mark tests as completed
+      setTestComplete(true);
+      
+      // For model-specific results, also save to local storage
+      if (modelConfig && modelConfig.id) {
+        try {
+          console.log('[RESULTS-DEBUG] Saving model test results to local storage for model ID:', modelConfig.id);
+          saveModelTestResults(modelConfig.id, normalizedResults);
+        } catch (e) {
+          console.error('[RESULTS-DEBUG] Error saving model test results:', e);
+        }
+      }
+      
+      return resultsObject;
+    } catch (error) {
+      console.error('[RESULTS-DEBUG] Error processing test results:', error);
+      return {};
     }
-    
-    // Reset table expansion state
-    setExpandedRows({});
-    
-    // Set progress to 100% when done
-    setTestProgress(100);
-    setCurrentTestName('Completed');
-    setTestComplete(true);
-    
-    const totalTests = Object.values(scores || {}).reduce((sum, score) => sum + score.total, 0);
-    const passedTests = Object.values(scores || {}).reduce((sum, score) => sum + score.passed, 0);
-    setTotalPassed(passedTests);
-    setTotalFailed(totalTests - passedTests);
-    const overallScoreValue = totalTests > 0 ? (passedTests / totalTests) * 100 : 0;
-    setOverallScore(overallScoreValue);
-    addLog(`Overall results: ${passedTests}/${totalTests} tests passed (${overallScoreValue.toFixed(1)}%)`);
-    
-    // Save results to model storage service
-    saveModelTestResults(selectedModelId, {
-      results: resultsObject,
-      overallScore: overallScoreValue,
-      totalTests,
-      passedTests,
-      timestamp: new Date().toISOString(),
-      categoryScores: scores || {}
-    });
-    
-    addLog(`Test results saved for model: ${modelConfig?.modelName}`);
-    
-    // Log the state of testResultsDataSource after saving
-    console.log('Final testResultsDataSource state:', testResultsDataSource);
   };
   
-  // Cleanup when component unmounts
-  useEffect(() => {
-    return () => {
-      // Only reset WebSocket if we're not in the middle of a test run
-      // and we're not waiting for results
-      if (!runningTests && !testComplete) {
-        addLog('Component unmounting, closing WebSocket connection');
-        websocketService.reset();
-      } else {
-        addLog('Component unmounting during test run or results processing, keeping WebSocket connection open');
-      }
-      
-      // DO NOT set runningTests to false here - it can interfere with test progress
-      // setRunningTests(false); - REMOVED
-      
-      // Only clean up the error state
-      setError(null);
+  // Add this function to test websocket connection state
+  const debugWebSocketState = () => {
+    console.log('[RESULTS-DEBUG] Testing websocket connection state');
+    // Log the current websocket state
+    console.log('[RESULTS-DEBUG] WebSocket connected:', websocketService.isConnected());
+    // Log current listeners
+    Object.keys(websocketService.eventListeners).forEach(type => {
+      console.log(`[RESULTS-DEBUG] WebSocket listeners for ${type}:`, websocketService.eventListeners[type].length);
+    });
+  }
+  
+  // Function to manually trigger a test_complete event for debugging
+  const testWebSocketListeners = () => {
+    console.log('[LISTENER-DEBUG] === MANUALLY TESTING WEBSOCKET LISTENERS ===');
+    
+    // Create a fake test_complete event
+    const fakeTestCompleteEvent = {
+      type: 'test_complete',
+      test_run_id: 'fake-test-run-id',
+      results_available: true,
+      message: 'Test execution completed successfully',
+      timestamp: new Date().toISOString()
     };
-  }, [runningTests, testComplete]);
-
-  // Add a new effect to handle WebSocket cleanup after results are processed
-  useEffect(() => {
-    if (testComplete && !runningTests) {
-      // Only disconnect after we've fully processed the results
-      setTimeout(() => {
-        addLog('Test complete and results processed, closing WebSocket connection');
-        websocketService.disconnect();
-      }, 2000); // Add a 2-second delay to ensure all results are processed
+    
+    console.log('[LISTENER-DEBUG] Created fake test_complete event:', fakeTestCompleteEvent);
+    
+    // Log current listeners before manual test
+    logActiveListeners('Before manual test');
+    
+    // Try to process the message using our websocketService
+    try {
+      console.log('[LISTENER-DEBUG] Manually processing fake test_complete event');
+      websocketService.processMessage(fakeTestCompleteEvent);
+      
+      // Also try direct notification
+      console.log('[LISTENER-DEBUG] Directly notifying test_complete listeners');
+      websocketService.notifyListeners('test_complete', fakeTestCompleteEvent);
+      
+      // Log listeners after manual test
+      logActiveListeners('After manual test');
+      
+      console.log('[LISTENER-DEBUG] Manual test complete');
+    } catch (error) {
+      console.error('[LISTENER-DEBUG] Error during manual test:', error);
     }
-  }, [testComplete, runningTests]);
+  };
+  
+  // Add a utility function to ensure taskId is available for navigation
+  const ensureTaskIdForResults = (id) => {
+    if (!id) {
+      console.error('[CRITICAL-DEBUG] No task ID available for navigation');
+      return false;
+    }
+    
+    // Save the ID for the "Show Results" button
+    setCurrentTaskId(id);
+    
+    // Also save to localStorage for persistence
+    try {
+      localStorage.setItem('currentTaskId', id);
+      console.log(`[CRITICAL-DEBUG] Saved current task ID to localStorage: ${id}`);
+      return true;
+    } catch (error) {
+      console.error('[CRITICAL-DEBUG] Error saving task ID to localStorage:', error);
+      return false;
+    }
+  };
+  
+  // Add code to load the currentTaskId from localStorage on component mount
+  useEffect(() => {
+    // Check if we have a stored task ID
+    try {
+      const storedTaskId = localStorage.getItem('currentTaskId');
+      if (storedTaskId) {
+        console.log(`[CRITICAL-DEBUG] Loaded task ID from localStorage: ${storedTaskId}`);
+        setCurrentTaskId(storedTaskId);
+      }
+    } catch (error) {
+      console.error('[CRITICAL-DEBUG] Error loading task ID from localStorage:', error);
+    }
+  }, []);
   
   return (
     <Container maxWidth="lg">
@@ -1216,6 +1495,65 @@ const RunTestsPage = () => {
                   </Button>
                 )}
               </Box>
+              
+              {/* Debug section - only visible in development mode */}
+              {import.meta.env.DEV && (
+                <Box sx={{ mt: 2, p: 2, bgcolor: 'rgba(0,0,0,0.03)', borderRadius: 1 }}>
+                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                    Debug Tools (Development Only)
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button 
+                      size="small" 
+                      variant="outlined"
+                      onClick={() => logActiveListeners('Manual check')}
+                      sx={{ fontSize: '0.75rem' }}
+                    >
+                      Log Listeners
+                    </Button>
+                    <Button 
+                      size="small" 
+                      variant="outlined"
+                      onClick={testWebSocketListeners}
+                      sx={{ fontSize: '0.75rem' }}
+                    >
+                      Test WebSocket Handlers
+                    </Button>
+                    <Button 
+                      size="small" 
+                      variant="outlined"
+                      onClick={() => websocketService.reset()}
+                      sx={{ fontSize: '0.75rem' }}
+                    >
+                      Reset WebSocket
+                    </Button>
+                    <Button 
+                      size="small" 
+                      variant="outlined"
+                      onClick={() => {
+                        console.log('[DEBUG-CRITICAL] Debugging window.fetch');
+                        const originalFetch = window.fetch;
+                        window.fetch = function(...args) {
+                          console.log('[DEBUG-CRITICAL] fetch called with:', ...args);
+                          return originalFetch.apply(this, args)
+                            .then(response => {
+                              console.log('[DEBUG-CRITICAL] fetch response:', response);
+                              return response;
+                            })
+                            .catch(error => {
+                              console.error('[DEBUG-CRITICAL] fetch error:', error);
+                              throw error;
+                            });
+                        };
+                        alert('Debugging fetch enabled - check console for fetch calls');
+                      }}
+                      sx={{ fontSize: '0.75rem' }}
+                    >
+                      Debug Fetch Calls
+                    </Button>
+                  </Box>
+                </Box>
+              )}
             </>
           )}
         </Paper>
@@ -1299,6 +1637,59 @@ const RunTestsPage = () => {
                     </Typography>
                   </Box>
                 </Box>
+              )}
+              
+              {testComplete && (
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={() => {
+                    // Try current state first
+                    let taskIdToUse = currentTaskId;
+                    
+                    // If not available, try localStorage
+                    if (!taskIdToUse) {
+                      try {
+                        taskIdToUse = localStorage.getItem('currentTaskId');
+                        console.log(`[MANUAL-NAV] Got task ID from localStorage: ${taskIdToUse}`);
+                      } catch (error) {
+                        console.error('[MANUAL-NAV] Error getting task ID from localStorage:', error);
+                      }
+                    }
+                    
+                    if (taskIdToUse) {
+                      // Navigate to results page with the task ID and whatever results we have in localStorage
+                      console.log('[MANUAL-NAV] Navigating to results with task ID:', taskIdToUse);
+                      
+                      // Try to get results from localStorage
+                      let storedResults = {};
+                      let storedScores = {};
+                      try {
+                        const resultsJson = localStorage.getItem('testResults');
+                        const scoresJson = localStorage.getItem('complianceScores');
+                        if (resultsJson) storedResults = JSON.parse(resultsJson);
+                        if (scoresJson) storedScores = JSON.parse(scoresJson);
+                        console.log('[MANUAL-NAV] Found stored results:', Object.keys(storedResults).length);
+                      } catch (error) {
+                        console.error('[MANUAL-NAV] Error retrieving from localStorage:', error);
+                      }
+                      
+                      navigate('/results', { 
+                        state: { 
+                          taskId: taskIdToUse,
+                          results: storedResults,
+                          scores: storedScores
+                        } 
+                      });
+                    } else {
+                      console.error('[MANUAL-NAV] No task ID available for manual navigation');
+                      setError('No task ID available. Cannot view results.');
+                    }
+                  }}
+                  sx={{ mt: 2 }}
+                >
+                  Show Results
+                </Button>
               )}
             </Paper>
           )}

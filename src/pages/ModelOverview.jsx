@@ -472,7 +472,9 @@ const ModelOverview = () => {
                               fontWeight: 'bold'
                             }}
                           >
-                                  {result.results.overallScore.toFixed(1)}%
+                                  {(result.results.overallScore !== undefined && result.results.overallScore !== null) 
+                                   ? result.results.overallScore.toFixed(1) + '%' 
+                                   : 'N/A'}
                           </Typography>
                                 <IconButton
                                   size="small"
@@ -520,12 +522,16 @@ const ModelOverview = () => {
                                           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
                                             <Typography variant="body2">{category}</Typography>
                                             <Typography variant="body2">
-                                              {score.passed}/{score.total} ({((score.passed/score.total) * 100).toFixed(1)}%)
+                                              {score && score.passed !== undefined && score.total ? 
+                                                `${score.passed}/${score.total} (${((score.passed/score.total) * 100).toFixed(1)}%)` :
+                                                'N/A'
+                                              }
                                             </Typography>
                                           </Box>
                                           <LinearProgress
                                             variant="determinate"
-                                            value={(score.passed/score.total) * 100}
+                                            value={score && score.passed !== undefined && score.total ? 
+                                              (score.passed/score.total) * 100 : 0}
                                             sx={{ height: 4, borderRadius: 1 }}
                                           />
                                         </Box>

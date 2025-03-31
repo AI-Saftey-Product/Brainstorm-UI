@@ -153,14 +153,53 @@ export const AppProvider = ({ children }) => {
     });
   };
 
-  // Save test results
+  /**
+   * Save test results and update the context state
+   * @param {Object} results - Test results to save
+   * @param {Object} scores - Compliance scores to save
+   */
   const saveTestResults = (results, scores) => {
-    setTestResults(results);
-    setComplianceScores(scores);
-    
-    // Save to localStorage
-    localStorage.setItem('testResults', JSON.stringify(results));
-    localStorage.setItem('complianceScores', JSON.stringify(scores));
+    console.log('[CONTEXT] saveTestResults called with:', {
+      resultsType: typeof results,
+      hasResults: results ? 'yes' : 'no',
+      resultsLength: results ? Object.keys(results).length : 0,
+      scoresType: typeof scores,
+      hasScores: scores ? 'yes' : 'no',
+      scoresLength: scores ? Object.keys(scores).length : 0,
+    });
+
+    // Validate that results is an object
+    if (!results || typeof results !== 'object') {
+      console.error('[CONTEXT] Invalid results provided to saveTestResults:', results);
+      return false;
+    }
+
+    try {
+      // Save to state
+      setTestResults(results);
+      setComplianceScores(scores || {});
+      console.log('[CONTEXT] Successfully saved test results and scores to context');
+
+      // Also save to localStorage for persistence
+      try {
+        const resultsToSave = JSON.stringify(results);
+        localStorage.setItem('testResults', resultsToSave);
+        console.log('[CONTEXT] Saved test results to localStorage:', resultsToSave.length, 'bytes');
+        
+        if (scores && Object.keys(scores).length > 0) {
+          const scoresToSave = JSON.stringify(scores);
+          localStorage.setItem('complianceScores', scoresToSave);
+          console.log('[CONTEXT] Saved compliance scores to localStorage:', scoresToSave.length, 'bytes');
+        }
+        return true;
+      } catch (storageError) {
+        console.error('[CONTEXT] Error saving to localStorage:', storageError);
+        return false;
+      }
+    } catch (error) {
+      console.error('[CONTEXT] Error in saveTestResults:', error);
+      return false;
+    }
   };
 
   // Reset all data
