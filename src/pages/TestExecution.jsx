@@ -156,7 +156,7 @@ const TestExecution = () => {
       </Typography>
 
       {status && (
-        <Paper sx={{ p: 3, mb: 3 }}>
+        <Paper sx={{ p: 3, mb: 3, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
           <Typography variant="h6" gutterBottom>
             Status: {status.status}
           </Typography>
@@ -179,7 +179,7 @@ const TestExecution = () => {
       {results && (
         <Grid container spacing={3}>
           <Grid item xs={12}>
-            <Paper sx={{ p: 3 }}>
+            <Paper sx={{ p: 3, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
               <Typography variant="h6" gutterBottom>
                 Test Results
               </Typography>
@@ -237,7 +237,7 @@ const TestExecution = () => {
           </Grid>
 
           <Grid item xs={12}>
-            <Paper sx={{ p: 3 }}>
+            <Paper sx={{ p: 3, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
               <Typography variant="h6" gutterBottom>
                 Compliance Scores by Category
               </Typography>

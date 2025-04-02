@@ -20,7 +20,7 @@ const Dashboard = () => {
       <Section title="Model Compliance Dashboard">
         <Grid container spacing={3}>
           <Grid item xs={12} md={7}>
-            <Paper elevation={3} sx={{ p: 3, height: '100%' }}>
+            <Paper sx={{ p: 3, height: '100%', boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
               <Typography variant="h5" gutterBottom>
                 Welcome to Brainstorm
               </Typography>
@@ -53,14 +53,16 @@ const Dashboard = () => {
                 <ModelConfigCard config={modelConfig} />
               ) : (
                 <Paper 
-                  elevation={2} 
                   sx={{ 
                     p: 3, 
                     bgcolor: 'warning.light', 
                     color: 'warning.contrastText',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 2
+                    gap: 2,
+                    boxShadow: 'none',
+                    border: '1px solid',
+                    borderColor: 'warning.main'
                   }}
                 >
                   <WarningIcon />

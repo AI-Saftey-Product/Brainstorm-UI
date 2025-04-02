@@ -1101,6 +1101,13 @@ const ResultsPage = () => {
         onClose={() => setCompareMode(false)}
         maxWidth="md"
         fullWidth
+        PaperProps={{
+          sx: {
+            boxShadow: 'none',
+            border: '1px solid',
+            borderColor: 'divider'
+          }
+        }}
       >
         <DialogTitle>Compare Test Runs</DialogTitle>
         <DialogContent>
@@ -1156,9 +1163,16 @@ const ResultsPage = () => {
         {/* Export Dialog */}
         <Dialog
           open={exportDialogOpen}
-        onClose={closeExportDialog}
+          onClose={closeExportDialog}
           maxWidth="sm"
           fullWidth
+          PaperProps={{
+            sx: {
+              boxShadow: 'none',
+              border: '1px solid',
+              borderColor: 'divider'
+            }
+          }}
         >
           <DialogTitle>
           <Typography variant="h6">

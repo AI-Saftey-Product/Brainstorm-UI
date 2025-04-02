@@ -143,33 +143,51 @@ const DatasetCard = ({ dataset, onEdit, onDelete }) => {
 
 const AddDatasetCard = ({ onClick }) => {
   return (
-    <Card 
-      sx={{ 
-        height: '100%', 
-        display: 'flex', 
-        flexDirection: 'column',
-        justifyContent: 'center',
-        alignItems: 'center',
-        p: 3,
-        cursor: 'pointer',
-        borderStyle: 'dashed',
-        borderWidth: 2,
-        borderColor: 'primary.main',
-        '&:hover': {
-          bgcolor: 'action.hover'
-        },
-        boxShadow: 'none'
-      }}
-      onClick={onClick}
-    >
-      <AddIcon sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
-      <Typography variant="h6" align="center" gutterBottom>
-        Add New Dataset
-      </Typography>
-      <Typography variant="body2" align="center" color="text.secondary">
-        Configure a HuggingFace dataset or upload your own
-      </Typography>
-    </Card>
+    <Tooltip title="Add New Dataset">
+      <Card 
+        onClick={onClick}
+        sx={{
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          border: '2px dashed',
+          borderColor: 'divider',
+          backgroundColor: 'transparent',
+          boxShadow: 'none',
+          minHeight: 250,
+          transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+          '&:hover': {
+            borderColor: 'primary.main',
+            backgroundColor: 'action.hover',
+          },
+          '&:active': {
+            transform: 'scale(0.98)',
+          }
+        }}
+      >
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 2,
+            p: 3,
+            color: 'text.secondary'
+          }}
+        >
+          <AddIcon sx={{ fontSize: 40, color: 'text.secondary' }} />
+          <Typography variant="h6" color="inherit">
+            Add New Dataset
+          </Typography>
+          <Typography variant="body2" align="center" color="text.secondary">
+            Configure a HuggingFace dataset or upload your own
+          </Typography>
+        </Box>
+      </Card>
+    </Tooltip>
   );
 };
 
@@ -412,6 +430,13 @@ const Datasets = () => {
       <Dialog
         open={deleteDialogOpen}
         onClose={() => setDeleteDialogOpen(false)}
+        PaperProps={{
+          sx: {
+            boxShadow: 'none',
+            border: '1px solid',
+            borderColor: 'divider'
+          }
+        }}
       >
         <DialogTitle>Delete Dataset</DialogTitle>
         <DialogContent>
