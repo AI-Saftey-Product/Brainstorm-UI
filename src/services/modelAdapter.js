@@ -4,6 +4,7 @@
  */
 
 import { getHuggingFaceModel } from './huggingFaceService';
+import { getOpenAIModelAdapter } from './openaiService';
 
 /**
  * Creates an appropriate model adapter based on the model configuration
@@ -39,6 +40,8 @@ export const createModelAdapter = async (modelConfig) => {
   switch (modelConfig.source.toLowerCase()) {
     case 'huggingface':
       return await createHuggingFaceAdapter(modelConfig);
+    case 'openai':
+      return await createOpenAIAdapter(modelConfig);
     case 'custom':
       return await createCustomAdapter(modelConfig);
     default:
@@ -129,6 +132,32 @@ const createHuggingFaceAdapter = async (modelConfig) => {
     };
   } catch (error) {
     console.error('Error creating Hugging Face adapter:', error);
+    throw error;
+  }
+};
+
+/**
+ * Creates an adapter for OpenAI models
+ * @param {Object} modelConfig - Configuration for the OpenAI model
+ * @returns {Object} - Model adapter with standardized interface
+ */
+const createOpenAIAdapter = async (modelConfig) => {
+  try {
+    // Validate OpenAI specific required fields
+    if (!modelConfig.api_key) {
+      throw new Error('API key is required for OpenAI models');
+    }
+
+    // Check for valid model ID
+    const modelId = modelConfig.model_id;
+    if (!modelId || modelId === 'None' || modelId === 'undefined') {
+      throw new Error('Missing or invalid OpenAI model ID');
+    }
+
+    // Use the OpenAI adapter service
+    return await getOpenAIModelAdapter(modelConfig, { verbose: modelConfig.verbose });
+  } catch (error) {
+    console.error('Error creating OpenAI adapter:', error);
     throw error;
   }
 };

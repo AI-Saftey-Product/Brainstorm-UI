@@ -73,7 +73,8 @@ const ModelOverview = () => {
   const [filters, setFilters] = useState({
     status: 'all',
     dateRange: 'all',
-    score: 'all'
+    score: 'all',
+    groupBy: 'none'
   });
 
   useEffect(() => {
@@ -112,7 +113,14 @@ const ModelOverview = () => {
     setModelConfig(normalizedConfig);
 
     const results = getModelTestResults(modelId);
-    setTestResults(results);
+    
+    // Enhance each test result with the model configuration for grouping
+    const enhancedResults = results.map(result => ({
+      ...result,
+      config: normalizedConfig  // Add model config to each result
+    }));
+    
+    setTestResults(enhancedResults);
 
     // Process test results for time series visualization
     const timeData = results.map(result => ({
@@ -142,7 +150,7 @@ const ModelOverview = () => {
   };
 
   const getFilteredResults = () => {
-    return testResults.filter(result => {
+    const filteredResults = testResults.filter(result => {
       if (filters.status !== 'all') {
         const passed = result.results.overallScore >= 80;
         if (filters.status === 'passed' && !passed) return false;
@@ -165,6 +173,56 @@ const ModelOverview = () => {
       
       return true;
     });
+    
+    if (filters.groupBy === 'none') {
+      return filteredResults;
+    }
+    
+    // Group results based on selected grouping
+    const groupedResults = [];
+    const groups = {};
+    
+    // First, organize results into groups
+    filteredResults.forEach(result => {
+      let groupKey;
+      
+      if (filters.groupBy === 'modality') {
+        groupKey = result.config?.modality || result.config?.modelCategory || 'Unknown';
+      } else if (filters.groupBy === 'modelType') {
+        groupKey = result.config?.sub_type || result.config?.modelType || 'Unknown';
+      } else if (filters.groupBy === 'source') {
+        groupKey = result.config?.source || 'Unknown';
+      } else {
+        groupKey = 'Other';
+      }
+      
+      if (!groups[groupKey]) {
+        groups[groupKey] = [];
+      }
+      
+      groups[groupKey].push(result);
+    });
+    
+    // Then, convert groups to array format with group headers
+    Object.entries(groups).forEach(([groupName, groupResults]) => {
+      // Add a special row as a group header
+      groupedResults.push({
+        id: `group_${groupName}`,
+        isGroupHeader: true,
+        groupName: groupName,
+        count: groupResults.length
+      });
+      
+      // Add all results in this group
+      groupResults.forEach(result => {
+        groupedResults.push({
+          ...result,
+          groupName // Add the group name to each result for reference
+        });
+      });
+    });
+    
+    return groupedResults;
   };
 
   const handleBulkAction = (action) => {
@@ -350,6 +408,20 @@ const ModelOverview = () => {
                       <MenuItem value="low">Low (≤49%)</MenuItem>
                     </Select>
                   </FormControl>
+                  
+                  <FormControl size="small">
+                    <InputLabel>Group By</InputLabel>
+                    <Select
+                      value={filters.groupBy}
+                      onChange={(e) => setFilters(prev => ({ ...prev, groupBy: e.target.value }))}
+                      label="Group By"
+                    >
+                      <MenuItem value="none">No Grouping</MenuItem>
+                      <MenuItem value="modality">Modality</MenuItem>
+                      <MenuItem value="modelType">Model Type</MenuItem>
+                      <MenuItem value="source">Source</MenuItem>
+                    </Select>
+                  </FormControl>
                 </Box>
               </Box>
 
@@ -429,6 +501,10 @@ const ModelOverview = () => {
                   <TableBody>
                     {getFilteredResults()
                       .sort((a, b) => {
+                        // Don't sort group headers - they should always be first in their group
+                        if (a.isGroupHeader) return -1;
+                        if (b.isGroupHeader) return 1;
+                        
                         const direction = sortConfig.direction === 'asc' ? 1 : -1;
                         if (sortConfig.field === 'timestamp') {
                           return direction * (new Date(a.timestamp) - new Date(b.timestamp));
@@ -438,150 +514,242 @@ const ModelOverview = () => {
                         }
                         return 0;
                       })
-                      .map((result) => (
-                        <React.Fragment key={result.id}>
-                          <TableRow
-                            hover
-                            selected={selectedRows.includes(result.id)}
-                          >
-                            <TableCell padding="checkbox">
-                              <Checkbox
-                                checked={selectedRows.includes(result.id)}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setSelectedRows(prev => [...prev, result.id]);
-                                  } else {
-                                    setSelectedRows(prev => prev.filter(id => id !== result.id));
-                                  }
+                      .map((result) => {
+                        // Render group header row
+                        if (result.isGroupHeader) {
+                          return (
+                            <TableRow 
+                              key={result.id}
+                              sx={{ 
+                                backgroundColor: theme => theme.palette.background.neutral || '#f5f5f5',
+                                '&:hover': {
+                                  backgroundColor: theme => theme.palette.background.neutral || '#f5f5f5',
+                                },
+                              }}
+                            >
+                              <TableCell 
+                                colSpan={7} 
+                                sx={{ 
+                                  py: 1.5, 
+                                  pl: 2,
+                                  borderBottom: theme => `1px solid ${theme.palette.divider}`,
+                                  fontWeight: 'bold',
+                                  color: theme => theme.palette.text.primary
                                 }}
-                              />
-                            </TableCell>
-                        <TableCell>
-                          {new Date(result.timestamp).toLocaleString()}
-                        </TableCell>
-                        <TableCell>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Typography
-                            sx={{
-                              color: theme => {
-                                const score = result.results.overallScore;
-                                return score >= 80 ? theme.palette.success.main :
-                                       score >= 50 ? theme.palette.warning.main :
-                                       theme.palette.error.main;
-                              },
-                              fontWeight: 'bold'
-                            }}
-                          >
-                                  {(result.results.overallScore !== undefined && result.results.overallScore !== null) 
-                                   ? result.results.overallScore.toFixed(1) + '%' 
-                                   : 'N/A'}
-                          </Typography>
-                                <IconButton
-                                  size="small"
-                                  onClick={() => setExpandedRow(expandedRow === result.id ? null : result.id)}
-                                >
-                                  {expandedRow === result.id ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
-                                </IconButton>
-                              </Box>
-                        </TableCell>
-                        <TableCell>{result.results.totalTests}</TableCell>
-                            <TableCell>{result.duration || '2m 30s'}</TableCell>
-                        <TableCell>
-                              <Chip
-                                label={result.results.overallScore >= 80 ? 'Passed' : 'Failed'}
-                                color={result.results.overallScore >= 80 ? 'success' : 'error'}
-                            size="small"
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <Tooltip title="View Details">
-                                <IconButton size="small" onClick={() => setExpandedRow(expandedRow === result.id ? null : result.id)}>
-                                  <InfoIcon />
-                                </IconButton>
-                              </Tooltip>
-                            </TableCell>
-                          </TableRow>
-                          
-                          {/* Expandable Row */}
-                          <TableRow>
-                            <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={7}>
-                              <Collapse in={expandedRow === result.id} timeout="auto" unmountOnExit>
-                                <Box sx={{ margin: 2 }}>
-                                  <Typography variant="h6" gutterBottom component="div">
-                                    Test Details
-                                  </Typography>
+                              >
+                                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                  {filters.groupBy === 'source' && (
+                                    <Box 
+                                      component="span" 
+                                      sx={{ 
+                                        mr: 1, 
+                                        p: 0.75, 
+                                        borderRadius: 1, 
+                                        backgroundColor: theme => theme.palette.primary.light,
+                                        color: theme => theme.palette.primary.contrastText,
+                                        fontSize: '0.75rem',
+                                        fontWeight: 'medium',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.5px'
+                                      }}
+                                    >
+                                      {result.groupName}
+                                    </Box>
+                                  )}
                                   
-                                  <Grid container spacing={3}>
-                                    {/* Category Scores */}
-                                    <Grid item xs={12} md={6}>
-                                      <Typography variant="subtitle2" gutterBottom>
-                                        Category Scores
-                                      </Typography>
-                                      {Object.entries(result.results.categoryScores || {}).map(([category, score]) => (
-                                        <Box key={category} sx={{ mb: 1 }}>
-                                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                                            <Typography variant="body2">{category}</Typography>
-                                            <Typography variant="body2">
-                                              {score && score.passed !== undefined && score.total ? 
-                                                `${score.passed}/${score.total} (${((score.passed/score.total) * 100).toFixed(1)}%)` :
-                                                'N/A'
-                                              }
-                                            </Typography>
-                                          </Box>
-                                          <LinearProgress
-                                            variant="determinate"
-                                            value={score && score.passed !== undefined && score.total ? 
-                                              (score.passed/score.total) * 100 : 0}
-                                            sx={{ height: 4, borderRadius: 1 }}
-                                          />
-                                        </Box>
-                                      ))}
-                                    </Grid>
-                                    
-                                    {/* Test Configuration */}
-                                    <Grid item xs={12} md={6}>
-                                      <Typography variant="subtitle2" gutterBottom>
-                                        Test Configuration
-                                      </Typography>
-                                      <TableContainer component={Paper} variant="outlined">
-                                        <Table size="small">
-                                          <TableBody>
-                                            {Object.entries(result.config || {}).map(([key, value]) => (
-                                              <TableRow key={key}>
-                                                <TableCell component="th" scope="row">
-                                                  {key}
-                                                </TableCell>
-                                                <TableCell>{value}</TableCell>
-                                              </TableRow>
-                                            ))}
-                                          </TableBody>
-                                        </Table>
-                                      </TableContainer>
-                                    </Grid>
-                                    
-                                    {/* Notes */}
-                                    <Grid item xs={12}>
-                                      <Typography variant="subtitle2" gutterBottom>
-                                        Notes
-                                      </Typography>
-                                      <TextField
-                                        fullWidth
-                                        multiline
-                                        rows={2}
-                                        placeholder="Add notes about this test run..."
-                                        value={result.notes || ''}
-                                        onChange={(e) => {
-                                          // Handle notes update
-                                        }}
-                                      />
-                                    </Grid>
-                                  </Grid>
+                                  {filters.groupBy === 'modality' && (
+                                    <Box 
+                                      component="span" 
+                                      sx={{ 
+                                        mr: 1, 
+                                        p: 0.75, 
+                                        borderRadius: 1, 
+                                        backgroundColor: theme => theme.palette.secondary.light,
+                                        color: theme => theme.palette.secondary.contrastText,
+                                        fontSize: '0.75rem',
+                                        fontWeight: 'medium',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.5px'
+                                      }}
+                                    >
+                                      {result.groupName}
+                                    </Box>
+                                  )}
+                                  
+                                  {filters.groupBy === 'modelType' && (
+                                    <Box 
+                                      component="span" 
+                                      sx={{ 
+                                        mr: 1, 
+                                        p: 0.75, 
+                                        borderRadius: 1, 
+                                        backgroundColor: theme => theme.palette.info.light,
+                                        color: theme => theme.palette.info.contrastText,
+                                        fontSize: '0.75rem',
+                                        fontWeight: 'medium',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.5px'
+                                      }}
+                                    >
+                                      {result.groupName}
+                                    </Box>
+                                  )}
+                                  
+                                  <Typography variant="body1" component="span">
+                                    {result.count} {result.count === 1 ? 'Result' : 'Results'}
+                                  </Typography>
                                 </Box>
-                              </Collapse>
-                        </TableCell>
-                      </TableRow>
-                        </React.Fragment>
-                    ))}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        }
+                        
+                        // Regular result row (existing code)
+                        return (
+                          <React.Fragment key={result.id}>
+                            <TableRow
+                              hover
+                              selected={selectedRows.includes(result.id)}
+                            >
+                              <TableCell padding="checkbox">
+                                <Checkbox
+                                  checked={selectedRows.includes(result.id)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedRows(prev => [...prev, result.id]);
+                                    } else {
+                                      setSelectedRows(prev => prev.filter(id => id !== result.id));
+                                    }
+                                  }}
+                                />
+                              </TableCell>
+                          <TableCell>
+                            {new Date(result.timestamp).toLocaleString()}
+                          </TableCell>
+                          <TableCell>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Typography
+                              sx={{
+                                color: theme => {
+                                  const score = result.results.overallScore;
+                                  return score >= 80 ? theme.palette.success.main :
+                                         score >= 50 ? theme.palette.warning.main :
+                                         theme.palette.error.main;
+                                },
+                                fontWeight: 'bold'
+                              }}
+                            >
+                                    {(result.results.overallScore !== undefined && result.results.overallScore !== null) 
+                                     ? result.results.overallScore.toFixed(1) + '%' 
+                                     : 'N/A'}
+                            </Typography>
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => setExpandedRow(expandedRow === result.id ? null : result.id)}
+                                  >
+                                    {expandedRow === result.id ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+                                  </IconButton>
+                                </Box>
+                          </TableCell>
+                          <TableCell>{result.results.totalTests}</TableCell>
+                              <TableCell>{result.duration || '2m 30s'}</TableCell>
+                          <TableCell>
+                                <Chip
+                                  label={result.results.overallScore >= 80 ? 'Passed' : 'Failed'}
+                                  color={result.results.overallScore >= 80 ? 'success' : 'error'}
+                              size="small"
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Tooltip title="View Details">
+                                  <IconButton size="small" onClick={() => setExpandedRow(expandedRow === result.id ? null : result.id)}>
+                                    <InfoIcon />
+                                  </IconButton>
+                                </Tooltip>
+                              </TableCell>
+                            </TableRow>
+                            
+                            {/* Expandable Row */}
+                            <TableRow>
+                              <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={7}>
+                                <Collapse in={expandedRow === result.id} timeout="auto" unmountOnExit>
+                                  <Box sx={{ margin: 2 }}>
+                                    <Typography variant="h6" gutterBottom component="div">
+                                      Test Details
+                                    </Typography>
+                                    
+                                    <Grid container spacing={3}>
+                                      {/* Category Scores */}
+                                      <Grid item xs={12} md={6}>
+                                        <Typography variant="subtitle2" gutterBottom>
+                                          Category Scores
+                                        </Typography>
+                                        {Object.entries(result.results.categoryScores || {}).map(([category, score]) => (
+                                          <Box key={category} sx={{ mb: 1 }}>
+                                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                                              <Typography variant="body2">{category}</Typography>
+                                              <Typography variant="body2">
+                                                {score && score.passed !== undefined && score.total ? 
+                                                  `${score.passed}/${score.total} (${((score.passed/score.total) * 100).toFixed(1)}%)` :
+                                                  'N/A'
+                                                }
+                                              </Typography>
+                                            </Box>
+                                            <LinearProgress
+                                              variant="determinate"
+                                              value={score && score.passed !== undefined && score.total ? 
+                                                (score.passed/score.total) * 100 : 0}
+                                              sx={{ height: 4, borderRadius: 1 }}
+                                            />
+                                          </Box>
+                                        ))}
+                                      </Grid>
+                                      
+                                      {/* Test Configuration */}
+                                      <Grid item xs={12} md={6}>
+                                        <Typography variant="subtitle2" gutterBottom>
+                                          Test Configuration
+                                        </Typography>
+                                        <TableContainer component={Paper} variant="outlined">
+                                          <Table size="small">
+                                            <TableBody>
+                                              {Object.entries(result.config || {}).map(([key, value]) => (
+                                                <TableRow key={key}>
+                                                  <TableCell component="th" scope="row">
+                                                    {key}
+                                                  </TableCell>
+                                                  <TableCell>{value}</TableCell>
+                                                </TableRow>
+                                              ))}
+                                            </TableBody>
+                                          </Table>
+                                        </TableContainer>
+                                      </Grid>
+                                      
+                                      {/* Notes */}
+                                      <Grid item xs={12}>
+                                        <Typography variant="subtitle2" gutterBottom>
+                                          Notes
+                                        </Typography>
+                                        <TextField
+                                          fullWidth
+                                          multiline
+                                          rows={2}
+                                          placeholder="Add notes about this test run..."
+                                          value={result.notes || ''}
+                                          onChange={(e) => {
+                                            // Handle notes update
+                                          }}
+                                        />
+                                      </Grid>
+                                    </Grid>
+                                  </Box>
+                                </Collapse>
+                          </TableCell>
+                        </TableRow>
+                          </React.Fragment>
+                        );
+                      })}
                   </TableBody>
                 </Table>
               </TableContainer>

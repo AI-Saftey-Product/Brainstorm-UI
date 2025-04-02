@@ -141,6 +141,18 @@ export const runTests = async (testIds, modelConfig, testParameters = {}, logCal
       parameters: { ...testParameters }
     };
 
+    // Add OpenAI specific parameters if the source is OpenAI
+    if (modelConfig.source === 'openai') {
+      payload.model_settings.temperature = Number(modelConfig.temperature || 0.7);
+      payload.model_settings.max_tokens = Number(modelConfig.max_tokens || 1024);
+      payload.model_settings.frequency_penalty = Number(modelConfig.frequency_penalty || 0);
+      payload.model_settings.presence_penalty = Number(modelConfig.presence_penalty || 0);
+      
+      if (modelConfig.organization_id) {
+        payload.model_settings.organization_id = modelConfig.organization_id;
+      }
+    }
+
     // Add test_run_id if provided to the root of the payload
     if (testParameters && testParameters.test_run_id) {
       log(`Using provided test run ID: ${testParameters.test_run_id}`);
