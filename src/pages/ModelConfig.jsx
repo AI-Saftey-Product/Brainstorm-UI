@@ -206,7 +206,7 @@ const ModelConfigPage = () => {
         Model Configuration
       </Typography>
       
-      <Paper sx={{ p: 3, mb: 3 }}>
+      <Paper sx={{ p: 3, mb: 3, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
         <ModelConfigForm
           initialValues={formValues}
           onChange={handleFormChange}
@@ -219,7 +219,7 @@ const ModelConfigPage = () => {
               Configuration Summary
             </Typography>
             
-            <Paper sx={{ p: 3 }}>
+            <Paper sx={{ p: 3, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
               <Box>
                 <Typography variant="subtitle1">Model Information</Typography>
                 <Divider sx={{ mb: 2 }} />

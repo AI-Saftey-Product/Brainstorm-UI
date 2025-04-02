@@ -649,7 +649,7 @@ const TestConfigPage = () => {
     
     if (filteredTests.length === 0) {
       return (
-        <Paper variant="outlined" sx={{ mt: 2, p: 3, textAlign: 'center' }}>
+        <Paper sx={{ boxShadow: 'none', border: '1px solid', borderColor: 'divider', mt: 2, p: 3, textAlign: 'center' }}>
           <Typography variant="body1" color="textSecondary">
             No applicable tests for this model type in this category.
           </Typography>
@@ -658,7 +658,7 @@ const TestConfigPage = () => {
     }
     
     return (
-      <Paper variant="outlined" sx={{ mt: 2 }}>
+      <Paper sx={{ boxShadow: 'none', border: '1px solid', borderColor: 'divider', mt: 2 }}>
         <ListItem>
           <ListItemIcon>
             <Checkbox

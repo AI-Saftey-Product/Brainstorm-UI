@@ -16,6 +16,9 @@ const TestConfigPage = React.lazy(() => import('./pages/TestConfig'));
 const ResultsPage = React.lazy(() => import('./pages/Results'));
 const ModelOverviewPage = React.lazy(() => import('./pages/ModelOverview'));
 const RunTestsPage = React.lazy(() => import('./pages/RunTests'));
+const DatasetsPage = React.lazy(() => import('./pages/Datasets'));
+const DatasetConfigPage = React.lazy(() => import('./pages/DatasetConfig'));
+const DatasetDetailPage = React.lazy(() => import('./pages/DatasetDetail'));
 
 // Loading fallback
 const LoadingFallback = () => (
@@ -46,6 +49,9 @@ const App = () => {
               <Route path="/model-overview" element={<ModelOverviewPage />} />
               <Route path="/model/:modelId" element={<ModelOverviewPage />} />
               <Route path="/run-tests" element={<RunTestsPage />} />
+              <Route path="/datasets" element={<DatasetsPage />} />
+              <Route path="/dataset-config" element={<DatasetConfigPage />} />
+              <Route path="/dataset/:datasetId" element={<DatasetDetailPage />} />
             </Routes>
           </Suspense>
         </MainLayout>

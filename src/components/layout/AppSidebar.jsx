@@ -59,7 +59,8 @@ const AppSidebar = ({ open, currentPath, modelConfigured }) => {
           width: drawerWidth,
           boxSizing: 'border-box',
           backgroundColor: '#f8f9fa',
-          borderRight: '1px solid rgba(0, 0, 0, 0.08)',
+          borderRight: '1px solid',
+          borderColor: 'divider',
         },
       }}
     >
@@ -100,6 +101,8 @@ const AppSidebar = ({ open, currentPath, modelConfigured }) => {
               p: 2, 
               backgroundColor: 'rgba(76, 175, 80, 0.1)', 
               borderRadius: 1,
+              border: '1px solid',
+              borderColor: 'success.light',
               borderLeft: '3px solid #4caf50',
             }}>
               <Typography variant="subtitle2" color="success.main">

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Typography, List, ListItem, ListItemIcon, ListItemText } from '@mui/material';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Wrench, PieChart, Settings } from 'lucide-react';
+import { LayoutDashboard, Wrench, PieChart, Settings, Database } from 'lucide-react';
 import brainstormLogo from '../../assets/brainstorm_logo.png';
 
 const Sidebar = ({ open }) => {
@@ -19,6 +19,11 @@ const Sidebar = ({ open }) => {
       label: 'Model Overview',
       path: '/model-overview',
       icon: <LayoutDashboard size={18} />
+    },
+    {
+      label: 'Datasets',
+      path: '/datasets',
+      icon: <Database size={18} />
     },
     {
       label: 'Model Config',

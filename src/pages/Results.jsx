@@ -851,16 +851,7 @@ const ResultsPage = () => {
       <Box sx={{ mb: 4 }}>
         <Grid container spacing={3}>
           <Grid item xs={12} sm={4}>
-            <Paper elevation={0} sx={{ 
-              p: 3, 
-              border: '1px solid',
-              borderColor: 'divider',
-              height: '100%',
-              transition: 'transform 0.2s ease-in-out',
-              '&:hover': {
-                transform: 'translateY(-2px)'
-              }
-            }}>
+            <Paper sx={{ boxShadow: 'none', border: '1px solid', borderColor: 'divider', p: 3, height: '100%', transition: 'transform 0.2s ease-in-out', '&:hover': { transform: 'translateY(-2px)' } }}>
               <Typography variant="subtitle2" gutterBottom>
                   Total Tests
                 </Typography>
@@ -871,17 +862,7 @@ const ResultsPage = () => {
           </Grid>
           
           <Grid item xs={6} sm={4}>
-            <Paper elevation={0} sx={{ 
-              p: 3,
-              border: '1px solid',
-              borderColor: 'success.light',
-              backgroundColor: 'success.lighter',
-              height: '100%',
-              transition: 'transform 0.2s ease-in-out',
-              '&:hover': {
-                transform: 'translateY(-2px)'
-              }
-            }}>
+            <Paper sx={{ boxShadow: 'none', border: '1px solid', borderColor: 'success.light', backgroundColor: 'success.lighter', p: 3, height: '100%', transition: 'transform 0.2s ease-in-out', '&:hover': { transform: 'translateY(-2px)' } }}>
               <Typography variant="subtitle2" color="success.dark" gutterBottom>
                   Tests Passed
                 </Typography>
@@ -892,17 +873,7 @@ const ResultsPage = () => {
           </Grid>
           
           <Grid item xs={6} sm={4}>
-            <Paper elevation={0} sx={{ 
-              p: 3,
-              border: '1px solid',
-              borderColor: 'error.light',
-              backgroundColor: 'error.lighter',
-              height: '100%',
-              transition: 'transform 0.2s ease-in-out',
-              '&:hover': {
-                transform: 'translateY(-2px)'
-              }
-            }}>
+            <Paper sx={{ boxShadow: 'none', border: '1px solid', borderColor: 'error.light', backgroundColor: 'error.lighter', p: 3, height: '100%', transition: 'transform 0.2s ease-in-out', '&:hover': { transform: 'translateY(-2px)' } }}>
               <Typography variant="subtitle2" color="error.dark" gutterBottom>
                   Tests Failed
                 </Typography>
@@ -968,17 +939,17 @@ const ResultsPage = () => {
             return (
               <Grid item xs={12} sm={6} md={4} key={category}>
                 <Paper 
-                  elevation={0} 
                   sx={{ 
-                    p: 3,
-                    border: '1px solid',
-                    borderColor: 'divider',
-                    height: '100%',
-                    transition: 'all 0.2s ease-in-out',
-                    '&:hover': {
-                      transform: 'translateY(-4px)',
-                      boxShadow: 2
-                    }
+                    boxShadow: 'none', 
+                    border: '1px solid', 
+                    borderColor: 'divider', 
+                    p: 3, 
+                    height: '100%', 
+                    transition: 'all 0.2s ease-in-out', 
+                    '&:hover': { 
+                      transform: 'translateY(-4px)', 
+                      boxShadow: 2 
+                    } 
                   }}
                 >
                   <Box sx={{ 

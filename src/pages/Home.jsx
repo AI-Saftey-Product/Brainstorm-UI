@@ -330,8 +330,10 @@ const HomePage = () => {
                   return sortedGroupKeys.map(groupKey => (
                     <Box key={groupKey} sx={{ mb: 4 }}>
                       <Paper 
-                        elevation={0}
                         sx={{ 
+                          boxShadow: 'none',
+                          border: '1px solid',
+                          borderColor: 'divider',
                           p: 2, 
                           mb: 2, 
                           bgcolor: theme => theme.palette.background.neutral || '#edf2f7',
@@ -450,6 +452,13 @@ const HomePage = () => {
       <Dialog
         open={deleteDialogOpen}
         onClose={() => setDeleteDialogOpen(false)}
+        PaperProps={{
+          sx: {
+            boxShadow: 'none',
+            border: '1px solid',
+            borderColor: 'divider'
+          }
+        }}
       >
         <DialogTitle>Delete Model Configuration</DialogTitle>
         <DialogContent>
