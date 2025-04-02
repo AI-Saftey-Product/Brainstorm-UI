@@ -114,7 +114,7 @@ const TestRunHistory = ({ limit = 10, onSelectResult = null }) => {
   };
 
   return (
-    <Paper elevation={3} sx={{ p: 2, mb: 3 }}>
+    <Paper sx={{ p: 2, mb: 3, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
         <HistoryIcon sx={{ mr: 1 }} />
         <Typography variant="h6">Recent Test Runs</Typography>

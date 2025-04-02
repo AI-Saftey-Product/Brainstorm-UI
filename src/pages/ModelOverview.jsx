@@ -285,7 +285,7 @@ const ModelOverview = () => {
         </Box>
 
         {/* Model Information */}
-        <Paper sx={{ p: 3, mb: 4 }}>
+        <Paper sx={{ p: 3, mb: 4, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
           <Typography variant="h6" gutterBottom>
             Model Information
           </Typography>
@@ -316,7 +316,7 @@ const ModelOverview = () => {
         {testResults.length > 0 ? (
           <>
             {/* Test Results Timeline */}
-            <Paper sx={{ p: 3, mb: 4 }}>
+            <Paper sx={{ p: 3, mb: 4, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
               <Typography variant="h6" gutterBottom>
                 Compliance Score History
               </Typography>
@@ -361,7 +361,7 @@ const ModelOverview = () => {
             </Paper>
 
             {/* Enhanced Test History Table */}
-            <Paper sx={{ p: 3 }}>
+            <Paper sx={{ p: 3, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                 <Typography variant="h6">
                 Test History
@@ -756,7 +756,7 @@ const ModelOverview = () => {
             </Paper>
           </>
         ) : (
-          <Paper sx={{ p: 4, textAlign: 'center' }}>
+          <Paper sx={{ p: 4, textAlign: 'center', boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
             <Typography variant="h6" gutterBottom>
               No Test Results Yet
             </Typography>

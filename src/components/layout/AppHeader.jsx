@@ -50,7 +50,9 @@ const AppHeader = ({ toggleDrawer }) => {
         zIndex: (theme) => theme.zIndex.drawer + 1,
         backgroundColor: 'background.paper',
         color: 'text.primary',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.08)',
+        boxShadow: 'none',
+        borderBottom: '1px solid',
+        borderColor: 'divider',
       }}
     >
       <Toolbar>
@@ -126,11 +128,13 @@ const AppHeader = ({ toggleDrawer }) => {
               horizontal: 'right',
             }}
             PaperProps={{
-              elevation: 3,
               sx: {
                 overflow: 'visible',
                 mt: 1.5,
                 width: 320,
+                boxShadow: 'none',
+                border: '1px solid',
+                borderColor: 'divider',
                 '&:before': {
                   content: '""',
                   display: 'block',
@@ -208,10 +212,12 @@ const AppHeader = ({ toggleDrawer }) => {
               horizontal: 'right',
             }}
             PaperProps={{
-              elevation: 3,
               sx: {
                 overflow: 'visible',
                 mt: 1.5,
+                boxShadow: 'none',
+                border: '1px solid',
+                borderColor: 'divider',
                 '&:before': {
                   content: '""',
                   display: 'block',

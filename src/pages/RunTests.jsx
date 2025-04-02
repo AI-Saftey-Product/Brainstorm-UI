@@ -1333,7 +1333,7 @@ const RunTestsPage = () => {
           Run Tests
         </Typography>
         
-        <Paper sx={{ p: 3, mb: 3 }}>
+        <Paper sx={{ p: 3, mb: 3, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
           <Typography variant="h6" gutterBottom>
             Select Model Configuration
           </Typography>
@@ -1466,7 +1466,7 @@ const RunTestsPage = () => {
               No tests have been selected. Please go back to Test Configuration to select tests.
             </Alert>
           ) : (
-            <Paper sx={{ p: 3, mb: 3 }}>
+            <Paper sx={{ p: 3, mb: 3, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
               <Box sx={{ mb: 3 }}>
                 <Typography variant="h6" gutterBottom>
                   Test Summary ({selectedTests.length} Tests Selected)
@@ -1476,12 +1476,13 @@ const RunTestsPage = () => {
                   {Object.entries(groupTestsByCategory()).map(([category, tests]) => (
                     <Grid item xs={6} sm={4} md={3} key={category}>
                       <Paper 
-                        elevation={0} 
                         sx={{ 
                           p: 2, 
                           bgcolor: 'rgba(0,0,0,0.03)', 
                           borderRadius: 2,
-                          border: '1px solid rgba(0,0,0,0.08)'
+                          border: '1px solid',
+                          borderColor: 'divider',
+                          boxShadow: 'none'
                         }}
                       >
                         <Box sx={{ display: 'flex', alignItems: 'center' }}>

@@ -121,7 +121,7 @@ const TestResultRow = ({
               
               <Grid container spacing={3}>
                 <Grid item xs={12} md={6}>
-                  <Paper variant="outlined" sx={{ p: 2 }}>
+                  <Paper sx={{ p: 2, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
                     <Typography variant="subtitle2" gutterBottom>
                       Description
                     </Typography>
@@ -132,7 +132,7 @@ const TestResultRow = ({
                 </Grid>
                 
                 <Grid item xs={12} md={6}>
-                  <Paper variant="outlined" sx={{ p: 2 }}>
+                  <Paper sx={{ p: 2, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
                     <Typography variant="subtitle2" gutterBottom>
                       Result Details
                 </Typography>
@@ -167,7 +167,7 @@ const TestResultRow = ({
                   <Grid container spacing={2}>
                     {Object.entries(item.result.metrics).map(([key, value]) => (
                       <Grid item xs={12} sm={6} md={4} key={key}>
-                        <Paper variant="outlined" sx={{ p: 2 }}>
+                        <Paper sx={{ p: 2, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
                           <Typography variant="caption" color="text.secondary">
                             {key}
                           </Typography>
@@ -195,7 +195,7 @@ const TestResultRow = ({
                 <Typography variant="subtitle2" gutterBottom>
                     Remediation Suggestions
                 </Typography>
-                <Paper variant="outlined" sx={{ p: 2 }}>
+                <Paper sx={{ p: 2, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
                     <Typography variant="body2" color="text.secondary">
                       {item.result.remediation}
                     </Typography>

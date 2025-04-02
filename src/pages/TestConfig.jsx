@@ -276,6 +276,13 @@ const TestConfigPage = () => {
         onClose={handleCloseConfigDialog}
         fullWidth
         maxWidth="sm"
+        PaperProps={{
+          sx: {
+            boxShadow: 'none',
+            border: '1px solid',
+            borderColor: 'divider'
+          }
+        }}
       >
         <DialogTitle>
           Configure Test: {currentTestForConfig.name}
@@ -617,7 +624,12 @@ const TestConfigPage = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseConfigDialog}>Cancel</Button>
-          <Button onClick={handleSaveTestParameters} variant="contained" color="primary">
+          <Button 
+            onClick={handleSaveTestParameters} 
+            variant="contained" 
+            color="primary"
+            sx={{ backgroundColor: 'black', '&:hover': { backgroundColor: '#333' } }}
+          >
             Save Parameters
           </Button>
         </DialogActions>
@@ -649,7 +661,7 @@ const TestConfigPage = () => {
     
     if (filteredTests.length === 0) {
       return (
-        <Paper variant="outlined" sx={{ mt: 2, p: 3, textAlign: 'center' }}>
+        <Paper sx={{ boxShadow: 'none', border: '1px solid', borderColor: 'divider', mt: 2, p: 3, textAlign: 'center' }}>
           <Typography variant="body1" color="textSecondary">
             No applicable tests for this model type in this category.
           </Typography>
@@ -658,7 +670,7 @@ const TestConfigPage = () => {
     }
     
     return (
-      <Paper variant="outlined" sx={{ mt: 2 }}>
+      <Paper sx={{ boxShadow: 'none', border: '1px solid', borderColor: 'divider', mt: 2 }}>
         <ListItem>
           <ListItemIcon>
             <Checkbox
@@ -692,6 +704,7 @@ const TestConfigPage = () => {
                     size="small"
                     onClick={() => handleConfigureTest(test)}
                     startIcon={<SettingsIcon />}
+                    sx={{ borderColor: 'divider' }}
                   >
                     Configure
                   </Button>
@@ -720,7 +733,7 @@ const TestConfigPage = () => {
                             size="small" 
                             color="primary" 
                             variant="outlined"
-                            sx={{ ml: 1 }}
+                            sx={{ ml: 1, borderColor: 'divider', color: 'black', borderColor: 'black' }}
                           />
                         )}
                       </Box>
@@ -823,7 +836,12 @@ const TestConfigPage = () => {
       {error && (
         <Alert 
           severity="error" 
-          sx={{ mb: 3 }}
+          sx={{ 
+            mb: 3,
+            boxShadow: 'none', 
+            border: '1px solid', 
+            borderColor: 'error.light'
+          }}
           action={
             <Button 
               color="inherit" 
@@ -839,7 +857,7 @@ const TestConfigPage = () => {
       )}
 
       {/* Model Selection Section */}
-      <Paper sx={{ p: 3, mb: 3 }}>
+      <Paper sx={{ p: 3, mb: 3, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
         <Typography variant="h6" gutterBottom>
           Select Model
         </Typography>
@@ -847,7 +865,7 @@ const TestConfigPage = () => {
           Choose the model you want to test from your saved configurations. Available tests will be filtered based on this selection.
         </Typography>
 
-        <FormControl fullWidth sx={{ mb: 2 }}>
+        <FormControl fullWidth sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderColor: 'divider' } }}>
           <InputLabel id="model-select-label">Model</InputLabel>
           <Select
             labelId="model-select-label"
@@ -886,17 +904,20 @@ const TestConfigPage = () => {
                 size="small" 
                 color="primary" 
                 variant="outlined" 
+                sx={{ borderColor: 'black', color: 'black' }}
               />
               <Chip 
                 label={`Modality: ${selectedModelConfig.modality || selectedModelConfig.modelCategory}`} 
                 size="small" 
                 color="secondary" 
                 variant="outlined" 
+                sx={{ borderColor: 'divider' }}
               />
               <Chip 
                 label={`ID: ${selectedModelConfig.model_id || selectedModelConfig.modelId || selectedModelConfig.selectedModel}`} 
                 size="small" 
                 variant="outlined" 
+                sx={{ borderColor: 'divider' }}
               />
             </Box>
           </Box>
@@ -905,13 +926,24 @@ const TestConfigPage = () => {
 
       {/* Only show test selection if a model is selected */}
       {selectedModelConfig && (
-        <Paper sx={{ p: 3, mb: 3 }}>
+        <Paper sx={{ p: 3, mb: 3, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
           <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
             <Tabs 
               value={currentTab} 
               onChange={handleTabChange}
               variant="scrollable"
               scrollButtons="auto"
+              sx={{ 
+                '& .MuiTabs-indicator': { 
+                  backgroundColor: 'black' 
+                },
+                '& .MuiTab-root': { 
+                  color: 'text.secondary',
+                  '&.Mui-selected': { 
+                    color: 'black'
+                  }
+                }
+              }}
             >
               {categories.map((category, index) => (
                 <Tab 
@@ -948,6 +980,7 @@ const TestConfigPage = () => {
             variant="outlined"
             onClick={() => setLocalSelectedTests([])}
             disabled={localSelectedTests.length === 0 || loading}
+            sx={{ borderColor: 'divider' }}
           >
             Clear Selection
           </Button>
@@ -958,6 +991,7 @@ const TestConfigPage = () => {
             onClick={handleSaveConfiguration}
             disabled={localSelectedTests.length === 0 || loading}
             startIcon={loading ? <CircularProgress size={20} /> : <CheckCircleOutlineIcon />}
+            sx={{ backgroundColor: 'black', '&:hover': { backgroundColor: '#333' } }}
           >
             Save Configuration
           </Button>
@@ -966,7 +1000,12 @@ const TestConfigPage = () => {
       
       {saveSuccess && (
         <Box sx={{ mt: 3 }}>
-          <Alert severity="success" sx={{ mb: 2 }}>
+          <Alert severity="success" sx={{ 
+            mb: 2,
+            boxShadow: 'none', 
+            border: '1px solid', 
+            borderColor: 'success.light'
+          }}>
             Test configuration saved successfully!
           </Alert>
           
@@ -976,6 +1015,7 @@ const TestConfigPage = () => {
               color="primary"
               startIcon={<PlayArrowIcon />}
               onClick={handleRunTests}
+              sx={{ backgroundColor: 'black', '&:hover': { backgroundColor: '#333' } }}
             >
               Proceed to Run Tests
             </Button>
@@ -988,6 +1028,13 @@ const TestConfigPage = () => {
       <Dialog
         open={confirmDialogOpen}
         onClose={handleNavigationCancel}
+        PaperProps={{
+          sx: {
+            boxShadow: 'none',
+            border: '1px solid',
+            borderColor: 'divider'
+          }
+        }}
       >
         <DialogTitle>Unsaved Changes</DialogTitle>
         <DialogContent>
@@ -1010,6 +1057,7 @@ const TestConfigPage = () => {
             onClick={handleNavigationConfirm} 
             variant="contained" 
             color="primary"
+            sx={{ backgroundColor: 'black', '&:hover': { backgroundColor: '#333' } }}
           >
             Save & Continue
           </Button>
