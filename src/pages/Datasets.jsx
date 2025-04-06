@@ -209,17 +209,9 @@ const Datasets = () => {
   const loadDatasets = () => {
     setLoading(true);
     try {
-      console.log('Loading saved datasets...');
       const savedDatasets = getSavedDatasetConfigs();
-      console.log(`Found ${savedDatasets.length} datasets:`, savedDatasets);
-      
-      if (savedDatasets.length === 0) {
-        console.log('No datasets found in localStorage');
-      }
-      
       setDatasets(savedDatasets);
     } catch (error) {
-      console.error('Error loading datasets:', error);
       setSnackbar({
         open: true,
         message: `Error loading datasets: ${error.message}`,

@@ -1,114 +1,132 @@
 /**
  * Real Tests Service
- * Handles production test execution against real models
- * This is a mock implementation for frontend development
+ * Handles interaction with real-world test APIs
  */
 
+import api from './api';
+
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+
 /**
- * Run real tests against a real model
- * @param {Array} testIds - IDs of tests to run
- * @param {Object} modelAdapter - Adapter for interacting with the model
- * @param {Object} testParameters - Optional parameters for tests
- * @param {Function} logCallback - Optional callback for logging
- * @returns {Promise<Object>} Test results and compliance scores
+ * Get all available real tests from the API
+ * @param {Object} params - Query parameters
+ * @returns {Promise<Array>} Array of test objects
  */
-export const runRealTests = async (testIds, modelAdapter, testParameters = {}, logCallback = null) => {
-  if (logCallback) {
-    logCallback('Mock implementation of real tests running...');
-  }
-  
-  console.log('Running tests with model adapter:', modelAdapter);
-  console.log('Test IDs:', testIds);
-  console.log('Test parameters:', testParameters);
-  
-  // Simulate processing time
-  await new Promise(resolve => setTimeout(resolve, 2000));
-  
-  const results = {};
-  const complianceScores = {};
-  
-  // Generate mock categories based on test IDs
-  const categories = {
-    'security': [],
-    'bias': [],
-    'toxicity': [],
-    'hallucination': [],
-    'robustness': []
-  };
-  
-  // Assign tests to categories
-  testIds.forEach(id => {
-    if (id.includes('bias')) {
-      categories.bias.push(id);
-    } else if (id.includes('toxicity')) {
-      categories.toxicity.push(id);
-    } else if (id.includes('hallucination')) {
-      categories.hallucination.push(id);
-    } else if (id.includes('security') || id.includes('safety')) {
-      categories.security.push(id);
-    } else {
-      categories.robustness.push(id);
-    }
-  });
-  
-  // Initialize category scores
-  Object.keys(categories).forEach(category => {
-    if (categories[category].length > 0) {
-      complianceScores[category] = { passed: 0, total: 0 };
-    }
-  });
-  
-  // Generate mock results for each test
-  for (const testId of testIds) {
-    const category = Object.keys(categories).find(cat => categories[cat].includes(testId)) || 'general';
+export const getRealTests = async (params = {}) => {
+  try {
+    // Build query string
+    const queryParams = new URLSearchParams();
     
-    if (logCallback) {
-      logCallback(`Running test: ${testId}`);
+    if (params.category) {
+      queryParams.append('category', params.category);
     }
     
-    // Simulate test execution time
-    await new Promise(resolve => setTimeout(resolve, Math.random() * 500 + 300));
+    if (params.modality) {
+      queryParams.append('modality', params.modality);
+    }
     
-    // Generate mock results
-    const pass = Math.random() > 0.3;
-    const score = pass ? (Math.random() * 0.3 + 0.7) : (Math.random() * 0.6);
+    const queryString = queryParams.toString();
+    const url = `${API_BASE_URL}/real-tests${queryString ? `?${queryString}` : ''}`;
     
-    results[testId] = {
-      test: {
-        id: testId,
-        name: testId.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-        category: category
-      },
-      result: {
-        pass,
-        score,
-        message: `Test ${pass ? 'passed' : 'failed'} with ${(score * 100).toFixed(1)}% compliance score`,
-        recommendations: pass ? [] : [
-          "Improve model training for this specific case",
-          "Add more safeguards against this issue",
-          "Consider fine-tuning with better examples"
-        ],
-        timestamp: new Date().toISOString()
+    const response = await api.request(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
       }
-    };
+    });
     
-    // Update category scores
-    complianceScores[category].total += 1;
-    if (pass) {
-      complianceScores[category].passed += 1;
+    return response;
+  } catch (error) {
+    throw error;
+  }
+};
+
+/**
+ * Get test details by ID
+ * @param {string} testId - The test ID
+ * @returns {Promise<Object>} Test details
+ */
+export const getRealTestById = async (testId) => {
+  try {
+    const url = `${API_BASE_URL}/real-tests/${testId}`;
+    
+    const response = await api.request(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    return response;
+  } catch (error) {
+    throw error;
+  }
+};
+
+/**
+ * Run real-world tests on a model
+ * @param {Object} params - Test parameters
+ * @param {string} params.modelId - The model ID to test
+ * @param {Array} params.testIds - Array of test IDs to run
+ * @param {string} params.apiKey - API key for the model
+ * @returns {Promise<Object>} Test results
+ */
+export const runRealTests = async (params) => {
+  try {
+    const { modelId, testIds, apiKey } = params;
+    
+    if (!modelId) {
+      throw new Error('Model ID is required');
     }
     
-    if (logCallback) {
-      logCallback(`Test ${testId} ${pass ? 'passed' : 'failed'} with score ${(score * 100).toFixed(1)}%`);
+    if (!testIds || !Array.isArray(testIds) || testIds.length === 0) {
+      throw new Error('At least one test ID is required');
     }
+    
+    const url = `${API_BASE_URL}/real-tests/run`;
+    
+    const response = await api.request(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model_id: modelId,
+        test_ids: testIds,
+        api_key: apiKey
+      })
+    });
+    
+    return response;
+  } catch (error) {
+    throw error;
   }
-  
-  // Calculate final scores
-  if (logCallback) {
-    const totalPassed = Object.values(complianceScores).reduce((sum, score) => sum + score.passed, 0);
-    const totalTests = Object.values(complianceScores).reduce((sum, score) => sum + score.total, 0);
-    logCallback(`Testing completed. ${totalPassed}/${totalTests} tests passed.`);
+};
+
+/**
+ * Get available test categories
+ * @returns {Promise<Array>} Array of category objects
+ */
+export const getRealTestCategories = async () => {
+  try {
+    const url = `${API_BASE_URL}/real-tests/categories`;
+    
+    const response = await api.request(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    return response;
+  } catch (error) {
+    throw error;
   }
-  
-  return { results, complianceScores };
+};
+
+export default {
+  getRealTests,
+  getRealTestById,
+  runRealTests,
+  getRealTestCategories
 }; 

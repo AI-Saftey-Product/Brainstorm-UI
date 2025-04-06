@@ -22,6 +22,7 @@ import {
   Alert,
   CircularProgress,
   Tooltip,
+  Pagination
 } from '@mui/material';
 import {
   ArrowLeft as ArrowLeftIcon,
@@ -52,6 +53,8 @@ const DatasetDetail = () => {
   const [error, setError] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [additionalInfo, setAdditionalInfo] = useState(null);
+  const [totalPages, setTotalPages] = useState(1);
+  const samplesPerPage = 5;
   
   // Load dataset details
   useEffect(() => {
@@ -72,63 +75,19 @@ const DatasetDetail = () => {
       
       setDataset(datasetConfig);
       
-      // Load samples
-      await loadSamples(datasetConfig);
-      
       // If it's a Hugging Face dataset, fetch additional info
       if (datasetConfig.source === 'huggingface') {
         try {
-          console.log('Fetching additional dataset info for:', datasetConfig.dataset_id);
           const info = await getDatasetInfo(datasetConfig.dataset_id, datasetConfig.api_key);
-          
-          // Process and normalize the info object to ensure it has the expected structure
-          const processedInfo = {};
-          
-          // Safely extract properties
-          if (info) {
-            if (typeof info === 'object') {
-              // Basic metadata
-              processedInfo.author = info.author || info.authorName || null;
-              processedInfo.likes = info.likes || info.numLikes || 0;
-              processedInfo.downloads = info.downloads || info.downloadCount || 0;
-              
-              // Extract card data if available
-              if (info.cardData || info.description) {
-                processedInfo.cardData = info.cardData || info.description || '';
-                
-                // If cardData is an object, try to extract a string representation
-                if (typeof processedInfo.cardData === 'object') {
-                  // Try to extract text content from common description fields
-                  if (processedInfo.cardData.description) {
-                    processedInfo.cardData = processedInfo.cardData.description;
-                  } else if (processedInfo.cardData.text) {
-                    processedInfo.cardData = processedInfo.cardData.text;
-                  } else if (processedInfo.cardData.content) {
-                    processedInfo.cardData = processedInfo.cardData.content;
-                  } else if (processedInfo.cardData.summary) {
-                    processedInfo.cardData = processedInfo.cardData.summary;
-                  }
-                  // If we couldn't find a string field, leave it as an object to be stringified when rendered
-                }
-              }
-              
-              // Extract citation if available
-              if (info.citation) {
-                processedInfo.citation = info.citation;
-              }
-            }
-          }
-          
-          console.log('Processed dataset info:', processedInfo);
-          setAdditionalInfo(processedInfo);
+          setAdditionalInfo(info);
         } catch (infoError) {
-          console.warn('Error fetching additional dataset info:', infoError);
           // Non-critical error, we can continue without additional info
-          setAdditionalInfo({});
         }
       }
+      
+      // Load samples
+      await loadSamples(datasetConfig);
     } catch (err) {
-      console.error('Error loading dataset:', err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -160,7 +119,6 @@ const DatasetDetail = () => {
       setSamples(sampleData);
       setSamplePage(page);
     } catch (err) {
-      console.error('Error loading dataset samples:', err);
       // If we can't load samples, don't set an error - just show empty samples
       setSamples([]);
     } finally {
@@ -178,7 +136,6 @@ const DatasetDetail = () => {
       await deleteDatasetConfig(datasetId);
       navigate('/datasets');
     } catch (err) {
-      console.error('Error deleting dataset:', err);
       setError('Failed to delete dataset: ' + err.message);
     }
   };

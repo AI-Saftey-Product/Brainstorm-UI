@@ -54,7 +54,7 @@ import TestResultTable from '../components/widgets/TestResultTable';
 import PageLayout from '../components/layout/PageLayout';
 import Section from '../components/layout/Section';
 import testResultsService from '../services/testResultsService';
-import { getTestResults } from '../services/testsService';
+import * as testsService from '../services/testsService';
 
 // Color mapping for categories
 const CATEGORY_COLORS = {
@@ -71,15 +71,6 @@ const CATEGORY_COLORS = {
   'compliance': '#4527a0' // deep purple
 };
 
-// Add this debug utility function at the top of the file after imports
-const debugObject = (obj, label) => {
-  try {
-    console.log(`[RESULTS-DEBUG] ${label}:`, typeof obj === 'object' ? JSON.stringify(obj, null, 2) : obj);
-  } catch (e) {
-    console.log(`[RESULTS-DEBUG] ${label} (circular reference):`, obj);
-  }
-};
-
 const ResultsPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -92,85 +83,38 @@ const ResultsPage = () => {
   // Local state as fallback
   const [localResults, setLocalResults] = useState({});
   const [localScores, setLocalScores] = useState({});
-  
-  // Debug button to help examine the current state
   const [showDebugPanel, setShowDebugPanel] = useState(false);
-  
-  const debugState = () => {
-    // Show detailed debugging info in the console
-    console.log('[RESULTS-DEBUG] === STATE DEBUGGING ===');
-    console.log('[RESULTS-DEBUG] Context testResults:', testResults);
-    console.log('[RESULTS-DEBUG] Context complianceScores:', complianceScores);
-    console.log('[RESULTS-DEBUG] Location state:', location.state);
-    console.log('[RESULTS-DEBUG] Location results:', locationResults);
-    console.log('[RESULTS-DEBUG] Local results state:', localResults);
-    console.log('[RESULTS-DEBUG] Selected tests:', selectedTests);
-    
-    // Toggle debug panel
-    setShowDebugPanel(!showDebugPanel);
-  };
-  
-  // DEBUG: Log test results when they arrive
-  useEffect(() => {
-    console.log('[RESULTS-PAGE-DEBUG] Checking for test results...');
-    console.log('[RESULTS-PAGE-DEBUG] Context test results:', 
-      testResults && Object.keys(testResults).length ? 'Found' : 'Not found');
-    console.log('[RESULTS-PAGE-DEBUG] Context compliance scores:', 
-      complianceScores && Object.keys(complianceScores).length ? 'Found' : 'Not found');
-    console.log('[RESULTS-PAGE-DEBUG] Selected tests:', selectedTests);
-    console.log('[RESULTS-PAGE-DEBUG] Location state:', location.state ? 'Available' : 'Not available');
-    if (location.state) {
-      console.log('[RESULTS-PAGE-DEBUG] Location results:', 
-        locationResults && Object.keys(locationResults).length ? 'Found' : 'Not found');
-    }
-    
-    try {
-      // ... existing code ...
-    } catch (error) {
-      console.error('[RESULTS-PAGE-DEBUG] Error in useEffect:', error);
-    }
-  }, [testResults, complianceScores, selectedTests, location.state, locationResults]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [results, setResults] = useState({});
+  const [scores, setScores] = useState({});
+  const [taskId, setTaskId] = useState('');
   
   // Update the useEffect that handles location state
   useEffect(() => {
-    console.log('[RESULTS-DEBUG] Results page mounted');
-    debugObject(location, 'Location object');
-    
     if (location?.state) {
-      debugObject(location.state, 'Location state');
-      
       // Extract data from location state
       const { taskId: locationTaskId, results: locationResults, scores: locationScores } = location.state;
       
       if (locationTaskId) {
         setTaskId(locationTaskId);
-        console.log(`[RESULTS-DEBUG] Task ID from location state: ${locationTaskId}`);
       }
       
       // Check if results exist in location state
       if (locationResults && typeof locationResults === 'object' && Object.keys(locationResults).length > 0) {
-        console.log(`[RESULTS-DEBUG] Found ${Object.keys(locationResults).length} results in location state`);
-        debugObject(locationResults, 'Location results sample', true);
-        
         // Update state with the results from location
         setResults(locationResults);
         if (locationScores) setScores(locationScores);
         
         // Save to context if not already there
         if (typeof saveTestResults === 'function') {
-          console.log('[RESULTS-DEBUG] Saving location results to context');
           saveTestResults(locationResults, locationScores || {});
         }
-      } else {
-        console.log('[RESULTS-DEBUG] No results in location state, checking context...');
       }
-    } else {
-      console.log('[RESULTS-DEBUG] No location state available');
     }
     
     // Always check for results in context and update if found
     if (testResults && Object.keys(testResults).length > 0) {
-      console.log(`[RESULTS-DEBUG] Using ${Object.keys(testResults).length} results from context`);
       setResults(testResults);
       if (complianceScores && Object.keys(complianceScores).length > 0) setScores(complianceScores);
     }
@@ -179,7 +123,6 @@ const ResultsPage = () => {
     const params = new URLSearchParams(location.search);
     const queryTaskId = params.get('taskId');
     if (queryTaskId && !location?.state?.taskId) {
-      console.log(`[RESULTS-DEBUG] Found task ID in query params: ${queryTaskId}`);
       setTaskId(queryTaskId);
     }
   }, [location, testResults, complianceScores, saveTestResults]);
@@ -187,16 +130,13 @@ const ResultsPage = () => {
   // Update the fetchResultsFromAPI function
   const fetchResultsFromAPI = async (id) => {
     if (!id) {
-      console.error('[RESULTS-DEBUG] Cannot fetch results: No task ID provided');
       return;
     }
 
-    console.log(`[RESULTS-DEBUG] Fetching results from API for task ID: ${id}`);
     setLoading(true);
     
     try {
       const apiResults = await testsService.getTestResults(id);
-      debugObject(apiResults, 'API response');
       
       // Check various locations for the results data
       let extractedResults = null;
@@ -204,21 +144,16 @@ const ResultsPage = () => {
       
       // Case 1: API returned an object with test_run property (most common)
       if (apiResults?.test_run) {
-        console.log('[RESULTS-DEBUG] Found test_run in API response');
-        
         // Check for results in test_run.results.test_results (newest format)
         if (apiResults.test_run.results?.test_results) {
-          console.log('[RESULTS-DEBUG] Found test_results in test_run.results');
           extractedResults = apiResults.test_run.results.test_results;
         }
         // Check for results in test_run.test_results
         else if (apiResults.test_run.test_results) {
-          console.log('[RESULTS-DEBUG] Found test_results directly in test_run');
           extractedResults = apiResults.test_run.test_results;
         }
         // Check for results in test_run.results
         else if (apiResults.test_run.results) {
-          console.log('[RESULTS-DEBUG] Found results in test_run');
           extractedResults = apiResults.test_run.results;
         }
         
@@ -229,11 +164,8 @@ const ResultsPage = () => {
       }
       // Case 2: API returned results directly
       else if (apiResults?.results) {
-        console.log('[RESULTS-DEBUG] Found results at top level of API response');
-        
         // Check for test_results in results
         if (apiResults.results.test_results) {
-          console.log('[RESULTS-DEBUG] Found test_results in results');
           extractedResults = apiResults.results.test_results;
         } else {
           // Results is the results object itself
@@ -247,21 +179,16 @@ const ResultsPage = () => {
       }
       // Case 3: API returned the results directly
       else if (apiResults && typeof apiResults === 'object' && !Array.isArray(apiResults)) {
-        console.log('[RESULTS-DEBUG] API response itself might be the results');
         extractedResults = apiResults;
       }
       
       // If we found results, process them
       if (extractedResults && Object.keys(extractedResults).length > 0) {
-        console.log(`[RESULTS-DEBUG] Successfully extracted ${Object.keys(extractedResults).length} results from API`);
-        
         // Check if we need to convert to expected format
         const sampleKey = Object.keys(extractedResults)[0];
         const sampleValue = extractedResults[sampleKey];
         
         if (!sampleValue?.test || !sampleValue?.result) {
-          console.log('[RESULTS-DEBUG] Converting results to expected format');
-          
           const formattedResults = {};
           Object.entries(extractedResults).forEach(([key, value]) => {
             // Skip if not an object or null
@@ -296,21 +223,17 @@ const ResultsPage = () => {
         
         // Save results to context and database
         if (typeof saveTestResults === 'function') {
-          console.log('[RESULTS-DEBUG] Saving API results to context');
           saveTestResults(extractedResults, extractedScores || {});
         }
         
         if (testResultsService?.saveResults) {
-          console.log('[RESULTS-DEBUG] Saving API results to database');
           testResultsService.saveResults(id, extractedResults, extractedScores || {})
-            .catch(error => console.error('[RESULTS-DEBUG] Error saving to database:', error));
+            .catch(error => {
+              // Error handling without console.error
+            });
         }
-      } else {
-        console.log('[RESULTS-DEBUG] No results found in API response');
-        setError('No results found for this test run.');
       }
     } catch (error) {
-      console.error('[RESULTS-DEBUG] Error fetching results from API:', error);
       setError(`Error fetching results: ${error.message}`);
     } finally {
       setLoading(false);
@@ -324,95 +247,48 @@ const ResultsPage = () => {
       const storedResults = localStorage.getItem('testResults');
       const storedScores = localStorage.getItem('complianceScores');
       
-      console.log('[RESULTS-PAGE-DEBUG] localStorage test results:', 
-        storedResults ? `Found (${storedResults.length} bytes)` : 'Not found');
-      if (storedResults) {
-        console.log('[RESULTS-PAGE-DEBUG] localStorage results content:', storedResults);
-      }
-      console.log('[RESULTS-PAGE-DEBUG] localStorage compliance scores:', 
-        storedScores ? `Found (${storedScores.length} bytes)` : 'Not found');
-      
       // First priority: Check if we already have data from router location state
       if (location.state && location.state.results && Object.keys(location.state.results).length > 0) {
-        console.log('[RESULTS-PAGE-DEBUG] Using results from navigation state', location.state.results);
         setLocalResults(location.state.results);
         setLocalScores(location.state.scores || {});
         
         // Also save to context if it's empty
         if ((!testResults || Object.keys(testResults).length === 0) && typeof saveTestResults === 'function') {
-          console.log('[RESULTS-PAGE-DEBUG] Saving location state results to context');
-          // This will also update localStorage
           saveTestResults(location.state.results, location.state.scores || {});
         }
       }
-      // Second priority: Check localStorage if context is empty
-      else if (storedResults && (!testResults || Object.keys(testResults).length === 0)) {
-        console.warn('[RESULTS-PAGE-DEBUG] Results exist in localStorage but not in context!');
-        
-        // Try to parse the localStorage data
+      // Second priority: Check for results in localStorage
+      else if (storedResults) {
         try {
-          let parsedResults;
-          try {
-            parsedResults = JSON.parse(storedResults);
-          } catch (parseError) {
-            console.error('[RESULTS-PAGE-DEBUG] Error parsing localStorage results:', parseError);
-            if (storedResults === '{}') {
-              parsedResults = {};
-            } else {
-              // If it's not valid JSON but looks like an empty object, use an empty object
-              parsedResults = {};
-            }
-          }
-          
-          console.log('[RESULTS-PAGE-DEBUG] Parsed results from localStorage:', 
-            parsedResults ? Object.keys(parsedResults).length : 0, 'tests');
-          
-          // Store in local state for immediate use
+          const parsedResults = JSON.parse(storedResults);
           if (parsedResults && Object.keys(parsedResults).length > 0) {
-            console.log('[RESULTS-PAGE-DEBUG] Using localStorage data directly for rendering');
             setLocalResults(parsedResults);
             
+            // Try to get scores too
             if (storedScores) {
               try {
                 const parsedScores = JSON.parse(storedScores);
                 setLocalScores(parsedScores);
-                console.log('[RESULTS-PAGE-DEBUG] Parsed scores from localStorage:', 
-                  Object.keys(parsedScores).length, 'categories');
               } catch (e) {
-                console.error('[RESULTS-PAGE-DEBUG] Error parsing scores from localStorage:', e);
+                // Error parsing scores
               }
             }
-          } else {
-            console.warn('[RESULTS-PAGE-DEBUG] localStorage results are empty or invalid');
-          }
-          
-          // If context is empty but localStorage is not empty (unlikely), update context
-          if (parsedResults && Object.keys(parsedResults).length > 0 && (!testResults || Object.keys(testResults).length === 0)) {
-            console.log('[RESULTS-PAGE-DEBUG] Loading results from localStorage to context');
             
-            // Use the saveTestResults function if available
-            if (typeof saveTestResults === 'function') {
+            // Save to context if not already there
+            if ((!testResults || Object.keys(testResults).length === 0) && typeof saveTestResults === 'function') {
               try {
-                const parsedScores = storedScores ? JSON.parse(storedScores) : {};
-                saveTestResults(parsedResults, parsedScores);
-                console.log('[RESULTS-PAGE-DEBUG] Successfully loaded localStorage results into context');
+                saveTestResults(parsedResults, storedScores ? JSON.parse(storedScores) : {});
               } catch (saveError) {
-                console.error('[RESULTS-PAGE-DEBUG] Error saving results to context:', saveError);
+                // Error saving results to context
               }
-            } else {
-              console.error('[RESULTS-PAGE-DEBUG] saveTestResults function not available in context');
             }
           }
         } catch (parseError) {
-          console.error('[RESULTS-PAGE-DEBUG] Error checking localStorage results:', parseError);
+          // Error checking localStorage results
         }
-      } else if (testResults && Object.keys(testResults).length > 0) {
-        console.log('[RESULTS-PAGE-DEBUG] Using existing test results from context');
-      } else {
-        console.warn('[RESULTS-PAGE-DEBUG] No results found in any source (location, context, or localStorage)');
       }
     } catch (error) {
-      console.error('[RESULTS-PAGE-DEBUG] Error checking localStorage:', error);
+      // Error checking localStorage
     }
   };
   
@@ -506,14 +382,11 @@ const ResultsPage = () => {
     const scores = effectiveScores || {};
     
     if (!scores || typeof scores !== 'object') {
-      console.log('[RESULTS-PAGE-DEBUG] Invalid compliance scores format:', scores);
       return 0;
     }
     
     // If we don't have explicit scores, try to calculate from results
     if (Object.keys(scores).length === 0 && effectiveResults) {
-      console.log('[RESULTS-PAGE-DEBUG] No explicit scores, calculating from results');
-      
       // Group tests by category
       const categories = {};
       Object.values(effectiveResults).forEach(result => {
@@ -534,21 +407,18 @@ const ResultsPage = () => {
         const totalPassed = Object.values(categories).reduce((sum, cat) => sum + cat.passed, 0);
         const totalTests = Object.values(categories).reduce((sum, cat) => sum + cat.total, 0);
         
-        console.log('[RESULTS-PAGE-DEBUG] Calculated score from results:', totalPassed, '/', totalTests);
         return totalTests > 0 ? (totalPassed / totalTests) * 100 : 0;
       }
     }
     
     const scoreValues = Object.values(scores);
     if (scoreValues.length === 0) {
-      console.log('[RESULTS-PAGE-DEBUG] No compliance scores available');
       return 0;
     }
     
     const totalPassed = scoreValues.reduce((sum, score) => sum + (score?.passed || 0), 0);
     const totalTests = scoreValues.reduce((sum, score) => sum + (score?.total || 0), 0);
     
-    console.log('[RESULTS-PAGE-DEBUG] Calculated score:', totalPassed, '/', totalTests);
     return totalTests > 0 ? (totalPassed / totalTests) * 100 : 0;
   };
   
@@ -568,22 +438,17 @@ const ResultsPage = () => {
   // Check if we have any results to show
   const hasResults = effectiveResults && Object.keys(effectiveResults).length > 0;
   
-  console.log('[RESULTS-PAGE-DEBUG] hasResults:', hasResults);
-  console.log('[RESULTS-PAGE-DEBUG] effectiveResults:', effectiveResults);
-  
   const overallScore = calculateOverallScore();
   
   // Statistics
   const getStats = () => {
     if (!hasResults) {
-      console.log('[RESULTS-PAGE-DEBUG] No results available for stats');
       return { total: 0, passed: 0, failed: 0 };
     }
     
     const total = Object.keys(effectiveResults).length;
     const passed = Object.values(effectiveResults).filter(result => result?.result?.pass).length;
     
-    console.log('[RESULTS-PAGE-DEBUG] Stats calculated:', { total, passed, failed: total - passed });
     return {
       total,
       passed,
@@ -781,7 +646,6 @@ const ResultsPage = () => {
         alert('Invalid API response format');
       }
     } catch (error) {
-      console.error('[DIRECT-FETCH] Error:', error);
       alert(`Direct fetch error: ${error.message}`);
     } finally {
       setDirectFetching(false);

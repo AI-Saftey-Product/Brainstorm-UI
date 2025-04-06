@@ -1,155 +1,193 @@
-// Service for managing saved model configurations and test results
-const SAVED_MODELS_KEY = 'savedModelConfigs';
-const TEST_RESULTS_KEY = 'modelTestResults';
+/**
+ * Model Storage Service
+ * Provides local storage for model configurations
+ */
 
-// Save a new model configuration
-export const saveModelConfig = (config) => {
-  try {
-    const savedConfigs = getSavedModelConfigs();
-    const timestamp = new Date().toISOString();
-    
-    // Map new field names to old field names for backward compatibility
-    const configWithMeta = {
-      ...config,
-      // Add backward compatibility fields
-      modelName: config.name || config.modelName || 'Unnamed Model',
-      modelType: config.sub_type || config.modelType || '',
-      modelCategory: config.modality || config.modelCategory || '',
-      modelId: config.model_id || config.modelId || '',
-      selectedModel: config.model_id || config.modelId || config.selectedModel || '',
-      apiKey: config.api_key || config.apiKey || '',
-      // Add new fields if they don't exist
-      name: config.name || config.modelName || 'Unnamed Model',
-      modality: config.modality || config.modelCategory || 'NLP',
-      sub_type: config.sub_type || config.modelType || '',
-      source: config.source || 'huggingface',
-      model_id: config.model_id || config.modelId || config.selectedModel || '',
-      api_key: config.api_key || config.apiKey || '',
-      // Add metadata
-      id: `model_${timestamp}`,
-      createdAt: timestamp,
-      lastModified: timestamp
-    };
-    
-    savedConfigs.push(configWithMeta);
-    localStorage.setItem(SAVED_MODELS_KEY, JSON.stringify(savedConfigs));
-    return configWithMeta;
-  } catch (error) {
-    console.error('Error saving model config:', error);
-    throw error;
-  }
-};
+// Storage keys
+const MODEL_CONFIGS_KEY = 'brainstormModelConfigs';
+const MODEL_TEST_RESULTS_KEY = 'brainstormModelTestResults';
 
-// Get all saved model configurations
+/**
+ * Get saved model configurations from localStorage
+ * @returns {Array} Array of saved model configurations
+ */
 export const getSavedModelConfigs = () => {
   try {
-    const savedConfigs = localStorage.getItem(SAVED_MODELS_KEY);
-    return savedConfigs ? JSON.parse(savedConfigs) : [];
+    const configsString = localStorage.getItem(MODEL_CONFIGS_KEY);
+    return configsString ? JSON.parse(configsString) : [];
   } catch (error) {
-    console.error('Error getting saved configs:', error);
     return [];
   }
 };
 
-// Get a specific model configuration by ID
-export const getModelConfigById = (id) => {
-  const configs = getSavedModelConfigs();
-  return configs.find(config => config.id === id);
-};
-
-// Save test results for a specific model
-export const saveTestResults = (modelId, results) => {
+/**
+ * Save a model configuration to localStorage
+ * @param {Object} config - Model configuration to save
+ * @returns {Object} Saved configuration with ID
+ */
+export const saveModelConfig = (config) => {
   try {
-    const allResults = getTestResults();
-    const timestamp = new Date().toISOString();
-    const resultsWithMeta = {
-      modelId,
-      results,
-      timestamp,
-      id: `test_${timestamp}`
-    };
-    
-    allResults.push(resultsWithMeta);
-    localStorage.setItem(TEST_RESULTS_KEY, JSON.stringify(allResults));
-    return resultsWithMeta;
-  } catch (error) {
-    console.error('Error saving test results:', error);
-    throw error;
-  }
-};
-
-// Get all test results
-export const getTestResults = () => {
-  try {
-    const results = localStorage.getItem(TEST_RESULTS_KEY);
-    return results ? JSON.parse(results) : [];
-  } catch (error) {
-    console.error('Error getting test results:', error);
-    return [];
-  }
-};
-
-// Get test results for a specific model
-export const getModelTestResults = (modelId) => {
-  const allResults = getTestResults();
-  return allResults.filter(result => result.modelId === modelId);
-};
-
-// Delete a model configuration and its associated test results
-export const deleteModelConfig = (modelId) => {
-  try {
-    let configs = getSavedModelConfigs();
-    configs = configs.filter(config => config.id !== modelId);
-    localStorage.setItem(SAVED_MODELS_KEY, JSON.stringify(configs));
-    
-    let results = getTestResults();
-    results = results.filter(result => result.modelId !== modelId);
-    localStorage.setItem(TEST_RESULTS_KEY, JSON.stringify(results));
-    
-    return true;
-  } catch (error) {
-    console.error('Error deleting model config:', error);
-    throw error;
-  }
-};
-
-// Update a model configuration
-export const updateModelConfig = (modelId, updates) => {
-  try {
+    // Get existing configurations
     const configs = getSavedModelConfigs();
-    const index = configs.findIndex(config => config.id === modelId);
     
-    if (index === -1) {
-      throw new Error('Model configuration not found');
-    }
-    
-    // Map new field names to old field names for backward compatibility
-    const updatedConfig = {
-      ...configs[index],
-      ...updates,
-      // Update backward compatibility fields
-      modelName: updates.name || updates.modelName || configs[index].modelName || configs[index].name || 'Unnamed Model',
-      modelType: updates.sub_type || updates.modelType || configs[index].modelType || configs[index].sub_type || '',
-      modelCategory: updates.modality || updates.modelCategory || configs[index].modelCategory || configs[index].modality || '',
-      modelId: updates.model_id || updates.modelId || configs[index].modelId || configs[index].model_id || '',
-      selectedModel: updates.model_id || updates.modelId || updates.selectedModel || configs[index].selectedModel || configs[index].model_id || '',
-      apiKey: updates.api_key || updates.apiKey || configs[index].apiKey || configs[index].api_key || '',
-      // Update new fields
-      name: updates.name || updates.modelName || configs[index].name || configs[index].modelName || 'Unnamed Model',
-      modality: updates.modality || updates.modelCategory || configs[index].modality || configs[index].modelCategory || 'NLP',
-      sub_type: updates.sub_type || updates.modelType || configs[index].sub_type || configs[index].modelType || '',
-      source: updates.source || configs[index].source || 'huggingface',
-      model_id: updates.model_id || updates.modelId || updates.selectedModel || configs[index].model_id || configs[index].modelId || configs[index].selectedModel || '',
-      api_key: updates.api_key || updates.apiKey || configs[index].api_key || configs[index].apiKey || '',
-      // Update metadata
+    // Generate an ID if one doesn't exist
+    const configWithId = {
+      ...config,
+      id: config.id || Date.now().toString(),
       lastModified: new Date().toISOString()
     };
     
-    configs[index] = updatedConfig;
-    localStorage.setItem(SAVED_MODELS_KEY, JSON.stringify(configs));
-    return updatedConfig;
+    // Add to array and save
+    const updatedConfigs = [...configs.filter(c => c.id !== configWithId.id), configWithId];
+    localStorage.setItem(MODEL_CONFIGS_KEY, JSON.stringify(updatedConfigs));
+    
+    return configWithId;
   } catch (error) {
-    console.error('Error updating model config:', error);
-    throw error;
+    return null;
+  }
+};
+
+/**
+ * Save test results for a model
+ * @param {string} modelId - ID of the model
+ * @param {Object} results - Test results to save
+ * @returns {Object} Saved results with timestamp
+ */
+export const saveModelTestResults = (modelId, results) => {
+  try {
+    if (!modelId) {
+      throw new Error('Model ID is required');
+    }
+    
+    // Get existing results
+    const allResults = getModelTestResultsMap();
+    
+    // Create a new result entry
+    const resultEntry = {
+      ...results,
+      modelId,
+      timestamp: new Date().toISOString()
+    };
+    
+    // Add to the array for this model
+    const modelResults = allResults[modelId] || [];
+    modelResults.push(resultEntry);
+    allResults[modelId] = modelResults;
+    
+    // Save back to localStorage
+    localStorage.setItem(MODEL_TEST_RESULTS_KEY, JSON.stringify(allResults));
+    
+    return resultEntry;
+  } catch (error) {
+    return null;
+  }
+};
+
+/**
+ * Get test results for a specific model
+ * @param {string} modelId - ID of the model
+ * @returns {Array} Array of test results for the model
+ */
+export const getModelTestResults = (modelId) => {
+  try {
+    if (!modelId) {
+      return [];
+    }
+    
+    const allResults = getModelTestResultsMap();
+    return allResults[modelId] || [];
+  } catch (error) {
+    return [];
+  }
+};
+
+/**
+ * Get all test results as a map by model ID
+ * @returns {Object} Map of test results by model ID
+ */
+export const getModelTestResultsMap = () => {
+  try {
+    const resultsString = localStorage.getItem(MODEL_TEST_RESULTS_KEY);
+    return resultsString ? JSON.parse(resultsString) : {};
+  } catch (error) {
+    return {};
+  }
+};
+
+/**
+ * Delete a model configuration
+ * @param {string} id - ID of the configuration to delete
+ * @returns {boolean} Whether the deletion was successful
+ */
+export const deleteModelConfig = (id) => {
+  try {
+    if (!id) {
+      return false;
+    }
+    
+    // Get existing configurations
+    const configs = getSavedModelConfigs();
+    
+    // Filter out the one to delete
+    const updatedConfigs = configs.filter(config => config.id !== id);
+    
+    // Save back to localStorage
+    localStorage.setItem(MODEL_CONFIGS_KEY, JSON.stringify(updatedConfigs));
+    
+    // Also delete any associated test results
+    const allResults = getModelTestResultsMap();
+    delete allResults[id];
+    localStorage.setItem(MODEL_TEST_RESULTS_KEY, JSON.stringify(allResults));
+    
+    return true;
+  } catch (error) {
+    return false;
+  }
+};
+
+/**
+ * Get a model configuration by ID
+ * @param {string} id - ID of the configuration to get
+ * @returns {Object|null} The model configuration or null if not found
+ */
+export const getModelConfigById = (id) => {
+  if (!id) {
+    return null;
+  }
+  
+  const configs = getSavedModelConfigs();
+  return configs.find(config => config.id === id) || null;
+};
+
+/**
+ * Update a model configuration
+ * @param {string} id - ID of the configuration to update
+ * @param {Object} updates - Properties to update
+ * @returns {Object|null} The updated configuration or null if update failed
+ */
+export const updateModelConfig = (id, updates) => {
+  try {
+    if (!id) {
+      return null;
+    }
+    
+    // Get existing configuration
+    const config = getModelConfigById(id);
+    if (!config) {
+      return null;
+    }
+    
+    // Update the configuration
+    const updatedConfig = {
+      ...config,
+      ...updates,
+      id, // Ensure ID doesn't change
+      lastModified: new Date().toISOString()
+    };
+    
+    // Save the updated configuration
+    return saveModelConfig(updatedConfig);
+  } catch (error) {
+    return null;
   }
 }; 

@@ -6,7 +6,7 @@
 import api from './api';
 
 // OpenAI API endpoint
-const OPENAI_API_URL = 'https://api.openai.com/v1';
+const API_URL = 'https://api.openai.com/v1';
 
 /**
  * Get an OpenAI model interface
@@ -49,7 +49,6 @@ export const getOpenAIModel = async (modelId, apiKey, options = {}) => {
       }
     };
   } catch (error) {
-    console.error(`Error initializing OpenAI model ${modelId}:`, error);
     throw new Error(`Failed to initialize model ${modelId}: ${error.message}`);
   }
 };
@@ -75,16 +74,7 @@ export const getOpenAIModelAdapter = async (modelConfig, options = {}) => {
   const modelId = modelConfig.model_id;
   const apiKey = modelConfig.api_key;
   
-  if (verbose) {
-    console.log('=== OpenAI Model Initialization ===');
-    console.log(`Model ID: ${modelId}`);
-    console.log(`Model Type: ${modelConfig.sub_type}`);
-    console.log('Starting initialization process...');
-  }
-  
   try {
-    if (verbose) console.log('Verifying model accessibility...');
-    
     // Extract OpenAI specific parameters
     const modelParams = {
       temperature: Number(modelConfig.temperature || 0.7),
@@ -127,7 +117,7 @@ export const getOpenAIModelAdapter = async (modelConfig, options = {}) => {
           presence_penalty: Number(modelParams.presence_penalty)
         };
     
-    const testResponse = await fetch(`${OPENAI_API_URL}/${endpoint}`, {
+    const testResponse = await api.request(`${API_URL}/${endpoint}`, {
       method: 'POST',
       headers: headers,
       body: JSON.stringify(payload)
@@ -135,11 +125,8 @@ export const getOpenAIModelAdapter = async (modelConfig, options = {}) => {
     
     if (!testResponse.ok) {
       const errorData = await testResponse.json().catch(() => ({}));
-      if (verbose) console.error('Model initialization failed:', errorData);
       throw new Error(`Failed to initialize model: ${testResponse.status} ${testResponse.statusText} - ${errorData.error?.message || ''}`);
     }
-    
-    if (verbose) console.log('Model successfully verified. Creating model adapter...');
     
     // Create a model adapter that uses the OpenAI API
     const modelAdapter = {
@@ -155,25 +142,13 @@ export const getOpenAIModelAdapter = async (modelConfig, options = {}) => {
       // Method for generating predictions from the model
       getPrediction: async (input) => {
         try {
-          if (verbose) {
-            console.log('=== Making Prediction Request ===');
-            console.log(`Input: ${input}`);
-          }
-          
           const result = await queryModel(modelId, input, apiKey, {
             ...modelParams,
             verbose
           });
           
-          if (verbose) console.log('Processing prediction response...');
-          
           // Process the response
           const processedResult = processOpenAIResponse(result, isChatModel);
-          
-          if (verbose) {
-            console.log('Processed prediction result:');
-            console.log(JSON.stringify(processedResult, null, 2));
-          }
           
           // Ensure the response has both prediction and text fields
           return {
@@ -182,7 +157,6 @@ export const getOpenAIModelAdapter = async (modelConfig, options = {}) => {
             raw: result
           };
         } catch (error) {
-          if (verbose) console.error('Error in getPrediction:', error);
           throw error;
         }
       },
@@ -205,31 +179,19 @@ export const getOpenAIModelAdapter = async (modelConfig, options = {}) => {
             presence_penalty: modelParams.presence_penalty
           }
         };
-        if (verbose) {
-          console.log('Model Information:');
-          console.log(JSON.stringify(info, null, 2));
-        }
         return info;
       }
     };
 
     // Test the getPrediction method to ensure it's working
-    if (verbose) console.log('Testing model prediction...');
     try {
       await modelAdapter.getPrediction("Test input");
-      if (verbose) console.log('Model prediction test successful');
     } catch (error) {
-      if (verbose) console.error('Model prediction test failed:', error);
       throw new Error(`Model adapter initialization failed: ${error.message}`);
     }
 
-    if (verbose) console.log('=== Model Initialization Complete ===');
     return modelAdapter;
   } catch (error) {
-    if (verbose) {
-      console.error('=== Model Initialization Failed ===');
-      console.error('Error details:', error);
-    }
     throw error;
   }
 };
@@ -246,8 +208,6 @@ const queryModel = async (modelId, input, apiKey, options = {}) => {
   const verbose = options.verbose || false;
   
   try {
-    if (verbose) console.log(`Querying OpenAI model ${modelId}...`);
-    
     const headers = {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`
@@ -280,13 +240,7 @@ const queryModel = async (modelId, input, apiKey, options = {}) => {
           presence_penalty: Number(options.presence_penalty || 0)
         };
     
-    if (verbose) {
-      console.log('OpenAI API Request:');
-      console.log(`Endpoint: ${OPENAI_API_URL}/${endpoint}`);
-      console.log('Payload:', JSON.stringify(payload, null, 2));
-    }
-    
-    const response = await fetch(`${OPENAI_API_URL}/${endpoint}`, {
+    const response = await api.request(`${API_URL}/${endpoint}`, {
       method: 'POST',
       headers: headers,
       body: JSON.stringify(payload)
@@ -294,20 +248,13 @@ const queryModel = async (modelId, input, apiKey, options = {}) => {
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      if (verbose) console.error('OpenAI API error:', errorData);
       throw new Error(`OpenAI API error: ${response.status} ${response.statusText} - ${errorData.error?.message || ''}`);
     }
     
     const result = await response.json();
     
-    if (verbose) {
-      console.log('OpenAI API Response:');
-      console.log(JSON.stringify(result, null, 2));
-    }
-    
     return result;
   } catch (error) {
-    console.error('Error querying OpenAI model:', error);
     throw error;
   }
 };
@@ -344,10 +291,197 @@ const processOpenAIResponse = (response, isChatModel) => {
       confidence
     };
   } catch (error) {
-    console.error('Error processing OpenAI response:', error);
     return {
       prediction: 'Error processing model response',
       confidence: 0
     };
+  }
+};
+
+/**
+ * Generate text using OpenAI's completion API
+ * @param {string} model - OpenAI model ID (e.g. "gpt-3.5-turbo")
+ * @param {string} prompt - Input prompt
+ * @param {Object} params - Additional parameters
+ * @param {string} apiKey - OpenAI API key
+ * @returns {Promise<Object>} Generated text response
+ */
+export const generateText = async (model, prompt, params = {}, apiKey) => {
+  try {
+    if (!apiKey) {
+      throw new Error('OpenAI API key is required');
+    }
+
+    // Determine if we're using Chat or Completion API based on model
+    const isChatModel = model.includes('gpt');
+    const endpoint = isChatModel ? 'chat/completions' : 'completions';
+    
+    // Default parameters
+    const defaultParams = {
+      temperature: 0.7,
+      max_tokens: 500,
+      top_p: 1,
+      frequency_penalty: 0,
+      presence_penalty: 0
+    };
+    
+    // Create request payload
+    const payload = {
+      ...defaultParams,
+      ...params,
+      model
+    };
+    
+    // Format differently for chat vs. completion models
+    if (isChatModel) {
+      payload.messages = [
+        { role: 'user', content: prompt }
+      ];
+    } else {
+      payload.prompt = prompt;
+    }
+    
+    // Send API request
+    const response = await api.request(`${API_URL}/${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify(payload)
+    });
+    
+    // Extract and format the response
+    let result;
+    if (isChatModel && response.choices && response.choices[0]) {
+      result = {
+        text: response.choices[0].message.content,
+        model,
+        usage: response.usage,
+        raw: response
+      };
+    } else if (response.choices && response.choices[0]) {
+      result = {
+        text: response.choices[0].text,
+        model,
+        usage: response.usage,
+        raw: response
+      };
+    } else {
+      throw new Error('Unexpected response format from OpenAI API');
+    }
+    
+    return result;
+  } catch (error) {
+    throw error;
+  }
+};
+
+/**
+ * Check if an OpenAI model is available
+ * @param {string} model - OpenAI model ID
+ * @param {string} apiKey - OpenAI API key
+ * @returns {Promise<boolean>} Whether the model is available
+ */
+export const checkModelAvailability = async (model, apiKey) => {
+  try {
+    if (!apiKey) {
+      throw new Error('OpenAI API key is required');
+    }
+    
+    // Get available models
+    const models = await getAvailableModels(apiKey);
+    
+    // Check if requested model is in the list
+    return models.some(m => m.id === model);
+  } catch (error) {
+    return false;
+  }
+};
+
+/**
+ * Get available OpenAI models
+ * @param {string} apiKey - OpenAI API key
+ * @returns {Promise<Array>} List of available models
+ */
+export const getAvailableModels = async (apiKey) => {
+  try {
+    if (!apiKey) {
+      throw new Error('OpenAI API key is required');
+    }
+    
+    const response = await api.request(`${API_URL}/models`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`
+      }
+    });
+    
+    if (response.data && Array.isArray(response.data)) {
+      return response.data;
+    }
+    
+    return [];
+  } catch (error) {
+    throw error;
+  }
+};
+
+/**
+ * Get details about a specific OpenAI model
+ * @param {string} model - OpenAI model ID
+ * @param {string} apiKey - OpenAI API key
+ * @returns {Promise<Object>} Model details
+ */
+export const getModelDetails = async (model, apiKey) => {
+  try {
+    if (!apiKey) {
+      throw new Error('OpenAI API key is required');
+    }
+    
+    const response = await api.request(`${API_URL}/models/${model}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`
+      }
+    });
+    
+    return response;
+  } catch (error) {
+    throw error;
+  }
+};
+
+/**
+ * Create embeddings using OpenAI's embedding API
+ * @param {string} model - OpenAI embedding model (e.g. "text-embedding-ada-002") 
+ * @param {string|Array<string>} input - Text to embed
+ * @param {string} apiKey - OpenAI API key
+ * @returns {Promise<Object>} Embedding response
+ */
+export const createEmbeddings = async (model, input, apiKey) => {
+  try {
+    if (!apiKey) {
+      throw new Error('OpenAI API key is required');
+    }
+    
+    // Handle single string vs array inputs
+    const textInput = Array.isArray(input) ? input : [input];
+    
+    const response = await api.request(`${API_URL}/embeddings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model,
+        input: textInput
+      })
+    });
+    
+    return response;
+  } catch (error) {
+    throw error;
   }
 }; 

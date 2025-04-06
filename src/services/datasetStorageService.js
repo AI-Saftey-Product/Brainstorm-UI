@@ -12,8 +12,6 @@ const SAVED_DATASETS_KEY = 'savedDatasetConfigs';
  */
 export const saveDatasetConfig = (config) => {
   try {
-    console.log('Saving dataset config:', config);
-    
     // Get existing configs
     const savedConfigs = getSavedDatasetConfigs();
     const timestamp = new Date().toISOString();
@@ -25,7 +23,6 @@ export const saveDatasetConfig = (config) => {
     
     if (isUpdate) {
       // Update existing config
-      console.log('Updating existing dataset:', config.id);
       return updateDatasetConfig(config.id, config);
     } else {
       // Add new config
@@ -48,17 +45,11 @@ export const saveDatasetConfig = (config) => {
       };
       
       savedConfigs.push(configWithMeta);
-      console.log('Saving to localStorage:', savedConfigs);
       localStorage.setItem(SAVED_DATASETS_KEY, JSON.stringify(savedConfigs));
-      
-      // Verify the save worked
-      const verifyConfigs = JSON.parse(localStorage.getItem(SAVED_DATASETS_KEY) || '[]');
-      console.log(`Save verified: Found ${verifyConfigs.length} datasets in localStorage`);
       
       return configWithMeta;
     }
   } catch (error) {
-    console.error('Error saving dataset config:', error);
     throw error;
   }
 };
@@ -70,24 +61,20 @@ export const saveDatasetConfig = (config) => {
 export const getSavedDatasetConfigs = () => {
   try {
     const storedData = localStorage.getItem(SAVED_DATASETS_KEY);
-    console.log('Retrieved from localStorage:', storedData);
     
     if (!storedData) {
-      console.log('No datasets found in localStorage, returning empty array');
       return [];
     }
     
     const savedConfigs = JSON.parse(storedData);
     
     if (!Array.isArray(savedConfigs)) {
-      console.warn('Stored dataset data is not an array, resetting to empty array');
       localStorage.setItem(SAVED_DATASETS_KEY, JSON.stringify([]));
       return [];
     }
     
     return savedConfigs;
   } catch (error) {
-    console.error('Error getting saved dataset configs:', error);
     // Reset localStorage if corrupted
     localStorage.setItem(SAVED_DATASETS_KEY, JSON.stringify([]));
     return [];
@@ -116,7 +103,6 @@ export const deleteDatasetConfig = (datasetId) => {
     localStorage.setItem(SAVED_DATASETS_KEY, JSON.stringify(configs));
     return true;
   } catch (error) {
-    console.error('Error deleting dataset config:', error);
     throw error;
   }
 };
@@ -153,7 +139,6 @@ export const saveDatasetFile = (datasetId, fileInfo) => {
     
     return saveDatasetConfig(updatedDataset);
   } catch (error) {
-    console.error('Error saving dataset file:', error);
     throw error;
   }
 };
@@ -166,13 +151,10 @@ export const saveDatasetFile = (datasetId, fileInfo) => {
  */
 export const updateDatasetConfig = (datasetId, updates) => {
   try {
-    console.log(`Updating dataset ${datasetId} with:`, updates);
-    
     const savedConfigs = getSavedDatasetConfigs();
     const configIndex = savedConfigs.findIndex(config => config.id === datasetId);
     
     if (configIndex === -1) {
-      console.error(`Dataset with ID ${datasetId} not found`);
       throw new Error(`Dataset with ID ${datasetId} not found`);
     }
     
@@ -186,18 +168,14 @@ export const updateDatasetConfig = (datasetId, updates) => {
       lastModified: new Date().toISOString()
     };
     
-    console.log('Updated config:', updatedConfig);
-    
     // Replace in array
     savedConfigs[configIndex] = updatedConfig;
     
     // Save back to localStorage
     localStorage.setItem(SAVED_DATASETS_KEY, JSON.stringify(savedConfigs));
-    console.log('Saved to localStorage. Total datasets:', savedConfigs.length);
     
     return updatedConfig;
   } catch (error) {
-    console.error('Error updating dataset config:', error);
     throw error;
   }
 };
@@ -257,7 +235,6 @@ export const importDatasetConfigs = (jsonString) => {
     localStorage.setItem(SAVED_DATASETS_KEY, JSON.stringify(configs));
     return getSavedDatasetConfigs();
   } catch (error) {
-    console.error('Error importing dataset configurations:', error);
     throw error;
   }
 }; 
