@@ -31,7 +31,11 @@ class WebSocketService {
       'close': [],
       'connection': [],
       'connection_established': [],
-      'raw_message': []  // New event type for raw message data
+      'raw_message': [],  // New event type for raw message data
+      'model_input': [],  // New event type for model inputs
+      'model_output': [], // New event type for model outputs
+      'evaluation_result': [], // New event type for evaluation results
+      'issue_found': []   // New event type for issues found
     };
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
@@ -65,6 +69,8 @@ class WebSocketService {
     // Restore any persistent handlers
     this.restorePersistentHandlers();
     
+    console.log('🔌 WEBSOCKET: Attempting to connect with taskId:', taskId);
+    
     return new Promise((resolve, reject) => {
       try {
         // Use the correct WebSocket endpoint format based on whether we have a taskId
@@ -80,10 +86,13 @@ class WebSocketService {
           wsEndpoint = `${wsUrl.replace(/^http/, 'ws')}/ws/tests`;
         }
         
+        console.log('🔌 WEBSOCKET: Connecting to endpoint:', wsEndpoint);
         this.ws = new WebSocket(wsEndpoint);
         
         this.ws.onopen = () => {
           this.connected = true;
+          console.log('✅ WEBSOCKET: Connection OPENED successfully');
+          console.log('✅ WEBSOCKET: readyState =', this.ws.readyState);
           
           // Log active listeners when connection is established
           this.logListenerState('Connection established (onopen)');
@@ -98,12 +107,60 @@ class WebSocketService {
         };
         
         this.ws.onmessage = (event) => {
+          // Log every single raw message received
+          console.log('📩 WEBSOCKET RAW MESSAGE RECEIVED:', event.data);
+          
+          // Always log the message type to diagnose message format issues
+          try {
+            const rawData = JSON.parse(event.data);
+            console.log(`📩 WEBSOCKET MESSAGE TYPE: ${rawData.type || 'NO_TYPE'}`);
+          } catch (e) {
+            console.log('📩 WEBSOCKET NON-JSON MESSAGE:', event.data);
+          }
+          
           // First, emit the raw message event with the raw data
           this.notifyListeners('raw_message', event.data);
           
           try {
             // Try to parse the message as JSON
             const data = JSON.parse(event.data);
+            
+            console.log('📩 WEBSOCKET PARSED MESSAGE:', {
+              type: data.type,
+              timestamp: data.timestamp,
+              message: data
+            });
+            
+            // Log all raw messages to console
+            console.log('[WebSocket Raw Message]:', data);
+            
+            // Log specific message types
+            if (data.type === 'model_input') {
+              console.log('[WebSocket Model Input]:', {
+                test_id: data.test_id,
+                prompt_type: data.prompt_type,
+                prompt: data.prompt
+              });
+            } 
+            else if (data.type === 'model_output') {
+              console.log('[WebSocket Model Output]:', {
+                test_id: data.test_id,
+                output: data.output
+              });
+            }
+            else if (data.type === 'evaluation_result') {
+              console.log('[WebSocket Evaluation Result]:', {
+                test_id: data.test_id,
+                evaluation: data.evaluation
+              });
+            }
+            else if (data.type === 'issue_found') {
+              console.log('[WebSocket Issue Found]:', {
+                test_id: data.test_id,
+                issue_type: data.issue_type,
+                details: data.details
+              });
+            }
             
             // Always emit a generic 'message' event with the full data
             this.notifyListeners('message', data);
@@ -148,6 +205,9 @@ class WebSocketService {
         this.ws.onerror = (error) => {
           this.connected = false;
           
+          console.error('❌ WEBSOCKET ERROR:', error);
+          console.error('❌ WEBSOCKET readyState =', this.ws.readyState);
+          
           // Log active listeners when an error occurs
           this.logListenerState('WebSocket error (onerror)');
           
@@ -157,6 +217,13 @@ class WebSocketService {
         
         this.ws.onclose = (event) => {
           this.connected = false;
+          
+          console.log('🔌 WEBSOCKET CLOSED:', {
+            code: event.code,
+            reason: event.reason,
+            wasClean: event.wasClean,
+            readyState: this.ws.readyState
+          });
           
           // Log active listeners when connection is closed
           this.logListenerState('Connection closed (onclose)');

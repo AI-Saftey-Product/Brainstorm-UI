@@ -101,10 +101,17 @@ export const runTests = async (testIds, modelConfig, testParameters = {}, logCal
       throw new Error('No model configuration provided');
     }
 
+    console.log('🚀 TEST SERVICE: Running tests with:', {
+      testIds,
+      modelConfig: {...modelConfig, api_key: '***REDACTED***'},
+      testParameters
+    });
+
     const log = (message) => {
       if (logCallback && typeof logCallback === 'function') {
         logCallback(message);
       }
+      console.log(`📝 TEST SERVICE LOG: ${message}`);
     };
 
     log('Preparing to run tests...');
@@ -152,6 +159,9 @@ export const runTests = async (testIds, modelConfig, testParameters = {}, logCal
     }
 
     log('Sending request to API...');
+    console.log('📤 TEST SERVICE: API Request payload:', JSON.stringify(payload, (key, value) => 
+      key === 'api_key' ? '***REDACTED***' : value
+    ));
 
     const response = await fetch(`${API_BASE_URL}/api/tests/run`, {
       method: 'POST',
@@ -163,20 +173,29 @@ export const runTests = async (testIds, modelConfig, testParameters = {}, logCal
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      console.error('❌ TEST SERVICE: API request failed:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorData
+      });
       throw new Error(errorData.error || `API request failed with status ${response.status}`);
     }
 
     const data = await response.json();
     log('API response received');
+    console.log('📥 TEST SERVICE: API Response data:', data);
 
     if (data && (data.task_id || data.test_run_id)) {
       const taskId = data.task_id || data.test_run_id;
       log(`Tests initiated with task ID: ${taskId}`);
+      console.log('✅ TEST SERVICE: Got task ID:', taskId);
       return taskId;
     } else {
+      console.error('❌ TEST SERVICE: No task ID in response:', data);
       throw new Error('No task ID in response');
     }
   } catch (error) {
+    console.error('❌ TEST SERVICE: Error running tests:', error);
     throw error;
   }
 };
@@ -280,36 +299,56 @@ export const getTestCategories = async () => {
  * @returns {Promise<Object>} Test results and compliance scores
  */
 export const getTestResults = async (taskId) => {
-  if (!taskId) {
-    throw new Error('Task ID is required');
-  }
-  
-  const TESTS_API_URL = process.env.REACT_APP_API_URL || import.meta.env?.VITE_TESTS_API_URL || 'http://localhost:8000';
-  const endpoint = `${TESTS_API_URL}/api/test_runs/${taskId}`;
-  
   try {
-    const response = await fetch(endpoint, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      }
-    });
+    if (!taskId) {
+      console.error('❌ TEST RESULTS: No task ID provided');
+      throw new Error('Task ID is required');
+    }
+    
+    console.log('🔍 TEST RESULTS: Fetching results for task:', taskId);
+    
+    // Check cache first
+    if (testResultsCache.has(taskId)) {
+      const cachedResults = testResultsCache.get(taskId);
+      
+      // Log cache hit
+      console.log('🔍 TEST RESULTS: Cache hit for task:', taskId);
+      
+      return cachedResults;
+    }
+    
+    const response = await fetch(`${API_BASE_URL}/api/tests/results/${taskId}`, fetchOptions);
     
     if (!response.ok) {
+      // Try to get error details
       const errorText = await response.text();
-      throw new Error(`API error: ${response.status} - ${errorText || response.statusText}`);
+      console.error('❌ TEST RESULTS: API request failed:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorText
+      });
+      throw new Error(`Failed to fetch test results: ${response.status} ${response.statusText}`);
     }
     
-    // Try to parse as JSON
-    try {
-      const responseText = await response.text();
-      const responseData = JSON.parse(responseText);
-      return responseData;
-    } catch (parseError) {
-      throw new Error('Invalid response format');
+    const data = await response.json();
+    console.log('📥 TEST RESULTS: Received results:', data);
+    
+    // Cache the results
+    testResultsCache.set(taskId, data);
+    
+    // Check for consecutive identical results and clear cache if needed
+    if (testResultsCache.size > 10) {
+      console.log('🧹 TEST RESULTS: Cache cleanup, removing oldest entries');
+      // Get all entries and sort by timestamp
+      const entries = Array.from(testResultsCache.entries());
+      const oldestEntries = entries.slice(0, entries.length - 10);
+      // Remove oldest entries
+      oldestEntries.forEach(([key]) => testResultsCache.delete(key));
     }
+    
+    return data;
   } catch (error) {
+    console.error('❌ TEST RESULTS: Error fetching results:', error);
     throw error;
   }
 };
