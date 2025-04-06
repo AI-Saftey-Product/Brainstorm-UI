@@ -113,7 +113,6 @@ const DatasetConfig = () => {
   // Load config from passedConfig on mount
   useEffect(() => {
     if (passedConfig) {
-      console.log('Loading passed config:', passedConfig);
       setFormValues({
         name: passedConfig.name || '',
         description: passedConfig.description || '',
@@ -127,7 +126,6 @@ const DatasetConfig = () => {
       });
       
       if (passedConfig.column_mapping) {
-        console.log('Setting column mappings from passed config:', passedConfig.column_mapping);
         setColumnMappings({
           input: passedConfig.column_mapping.input || '',
           reference: passedConfig.column_mapping.reference || '',
@@ -176,8 +174,6 @@ const DatasetConfig = () => {
   };
   
   const handleColumnMappingChange = (field) => (event) => {
-    console.log(`Changing column mapping for ${field} to:`, event.target.value);
-    
     // Update the column mappings state
     const newColumnMappings = {
       ...columnMappings,
@@ -191,7 +187,6 @@ const DatasetConfig = () => {
         ...prev,
         column_mapping: newColumnMappings
       };
-      console.log('Updated form values with new column mapping:', updatedFormValues);
       return updatedFormValues;
     });
     
@@ -225,7 +220,6 @@ const DatasetConfig = () => {
   };
   
   const handleSelectDataset = async (datasetId) => {
-    console.log('Selecting dataset:', datasetId);
     setLoading(true);
     
     try {
@@ -235,14 +229,11 @@ const DatasetConfig = () => {
           ...prev,
           dataset_id: datasetId
         };
-        console.log('Updated form values with dataset ID:', updatedValues);
         return updatedValues;
       });
       
       // Fetch dataset details
-      console.log('Fetching dataset info for:', datasetId);
       const datasetInfo = await getDatasetInfo(datasetId, formValues.api_key);
-      console.log('Received dataset info:', datasetInfo);
       setSelectedDataset(datasetInfo);
       
       // Update name and description if not already set
@@ -253,23 +244,19 @@ const DatasetConfig = () => {
             name: datasetInfo.name || datasetId.split('/').pop(),
             description: datasetInfo.description || ''
           };
-          console.log('Updated form with dataset info:', updatedValues);
           return updatedValues;
         });
       }
       
       // Fetch samples
-      console.log('Fetching dataset samples...');
       try {
         const samples = await getDatasetSample(datasetId, formValues.split, 5, formValues.api_key);
-        console.log('Received dataset samples:', samples);
         
         if (samples && samples.length > 0) {
           setDatasetSamples(samples);
           
           // Extract columns/features for mapping
           const sampleColumns = Object.keys(samples[0]);
-          console.log('Found columns in samples:', sampleColumns);
           setColumns(sampleColumns);
           
           // Auto-detect possible column mappings
@@ -288,7 +275,6 @@ const DatasetConfig = () => {
                 reference: outputCol || '',
                 label: ''
               };
-              console.log('Auto-detected column mappings:', newMappings);
               setColumnMappings(newMappings);
               
               // Also update in form values
@@ -307,27 +293,12 @@ const DatasetConfig = () => {
           });
         }
       } catch (sampleError) {
-        console.error('Error fetching samples:', sampleError);
-        
-        setSnackbar({
-          open: true,
-          message: `Could not fetch samples: ${sampleError.message}. Please try a different dataset.`,
-          severity: 'error'
-        });
-        
         // Reset selected dataset if we couldn't get samples
         setSelectedDataset(null);
         setDatasetSamples([]);
         setColumns([]);
       }
     } catch (error) {
-      console.error('Error selecting dataset:', error);
-      setSnackbar({
-        open: true,
-        message: `Failed to load dataset: ${error.message}`,
-        severity: 'error'
-      });
-      
       // Reset state
       setSelectedDataset(null);
       setDatasetSamples([]);
@@ -413,19 +384,12 @@ const DatasetConfig = () => {
     }
     
     setValidationErrors(errors);
-    console.log('Form validation results:', errors);
-    console.log('Validation passed:', Object.keys(errors).length === 0);
     return Object.keys(errors).length === 0;
   };
   
   const handleSubmit = async () => {
-    console.log('Submit button clicked');
-    console.log('Current form values:', formValues);
-    console.log('Column mappings:', columnMappings);
-    
     // Check form validation
     if (!validateForm()) {
-      console.log('Form validation failed');
       setSnackbar({
         open: true,
         message: 'Please fix the validation errors before saving',
@@ -434,7 +398,6 @@ const DatasetConfig = () => {
       return;
     }
     
-    console.log('Form validation passed, proceeding with save');
     setLoading(true);
     
     try {
@@ -445,17 +408,13 @@ const DatasetConfig = () => {
         column_mapping: columnMappings,
       };
       
-      console.log('Preparing to save dataset config:', datasetConfig);
-      
       // If custom upload, include file data
       if (formValues.source === 'custom' && uploadedFile) {
         datasetConfig.file = uploadedFile;
       }
       
       // Save configuration
-      console.log('Calling saveDatasetConfig...');
       const savedConfig = await saveDatasetConfig(datasetConfig);
-      console.log('Dataset saved successfully:', savedConfig);
       
       setConfigSuccess(true);
       setSnackbar({
@@ -465,13 +424,10 @@ const DatasetConfig = () => {
       });
       
       // Redirect to datasets page after successful save
-      console.log('Setting timeout for redirection...');
       setTimeout(() => {
-        console.log('Redirecting to /datasets page...');
         navigate('/datasets');
       }, 1500);
     } catch (error) {
-      console.error('Error saving dataset:', error);
       setSnackbar({
         open: true,
         message: `Failed to save dataset: ${error.message}`,
@@ -879,7 +835,6 @@ const DatasetConfig = () => {
           <Button
             variant="contained"
             onClick={() => {
-              console.log('Save button clicked directly');
               handleSubmit();
             }}
             startIcon={<SaveIcon />}

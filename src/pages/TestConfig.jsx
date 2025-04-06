@@ -136,10 +136,8 @@ const TestConfigPage = () => {
         // Now fetch tests based on the selected model
         await fetchTestsForModel(normalizedConfig);
       } catch (error) {
-        console.error('Error fetching tests for model:', error);
         setError(`Failed to load tests for selected model: ${error.message}`);
-      } finally {
-        setLoadingTests(false);
+        setLoading(false);
       }
     }
   };
@@ -178,7 +176,6 @@ const TestConfigPage = () => {
   
   const handleSelectAllForCategory = (category) => {
     if (!Array.isArray(availableTests)) {
-      console.error('availableTests is not an array in handleSelectAllForCategory');
       return;
     }
     
@@ -638,9 +635,7 @@ const TestConfigPage = () => {
   };
   
   const renderTestList = (category) => {
-    // Safety check to ensure availableTests is an array
     if (!Array.isArray(availableTests)) {
-      console.error('availableTests is not an array:', availableTests);
       return (
         <Alert severity="error" sx={{ mt: 2 }}>
           Error loading tests. Please try refreshing the page.

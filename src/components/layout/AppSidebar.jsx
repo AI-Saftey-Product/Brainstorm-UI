@@ -27,15 +27,7 @@ const AppSidebar = ({ open, currentPath, modelConfigured }) => {
   const navigate = useNavigate();
   const { modelType, modelConfig } = useAppContext();
   
-  // Debug log - this helps us see what's happening
-  console.log('Sidebar modelConfigured:', modelConfigured);
-  console.log('Sidebar modelConfig:', modelConfig);
-  
   const handleNavigation = (path) => {
-    console.log('Sidebar: Attempting to navigate to:', path);
-    console.log('Sidebar: Current path is:', currentPath);
-    console.log('Sidebar: modelConfigured:', modelConfigured);
-    
     // Use React Router's navigate function directly
     navigate(path);
   };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -15,19 +15,26 @@ import {
   Chip,
   Container,
   Grid,
+  Stack,
 } from '@mui/material';
 import { runTests, getTestResults } from '../services/testsService';
 import websocketService from '../services/websocketService';
+import { useAppContext } from '../context/AppContext';
 
 const TestExecution = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { selectedTests, modelConfig, testParameters } = location.state || {};
   const [taskId, setTaskId] = useState(null);
-  const [status, setStatus] = useState(null);
+  const [status, setStatus] = useState({ running: false, complete: false, error: null });
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [logs, setLogs] = useState([]);
+  const [progress, setProgress] = useState(0);
+  const [testResults, setTestResults] = useState([]);
+  const logsEndRef = useRef(null);
+  const { saveTestResults } = useAppContext();
 
   useEffect(() => {
     const startTests = async () => {
@@ -42,7 +49,6 @@ const TestExecution = () => {
         setTaskId(newTaskId);
         setLoading(false);
       } catch (error) {
-        console.error('Error starting tests:', error);
         setError('Failed to start tests');
         setLoading(false);
       }
@@ -58,7 +64,6 @@ const TestExecution = () => {
       try {
         // Connect to WebSocket for real-time updates
         await websocketService.connect(taskId);
-        console.log('WebSocket connection established for test execution monitoring');
         
         // Handle test status updates
         websocketService.on('test_status_update', (data) => {
@@ -72,14 +77,11 @@ const TestExecution = () => {
         
         // Handle individual test results
         websocketService.on('test_result', (data) => {
-          console.log('Received individual test result:', data.result);
           // We could handle individual test results here if needed
         });
         
         // Handle test completion
         websocketService.on('test_complete', async (data) => {
-          console.log('Test execution completed:', data);
-          
           try {
             // Fetch the final complete results
             const resultsData = await getTestResults(taskId);
@@ -89,14 +91,12 @@ const TestExecution = () => {
               progress: 1.0
             });
           } catch (error) {
-            console.error('Error fetching final results:', error);
             setError(`Failed to fetch final results: ${error.message}`);
           }
         });
         
         // Handle test failure
         websocketService.on('test_failed', (data) => {
-          console.error('Test execution failed:', data.message);
           setError(data.message || 'Test execution failed');
           setStatus({
             status: 'failed',
@@ -107,11 +107,9 @@ const TestExecution = () => {
         
         // Handle WebSocket connection errors
         websocketService.on('error', (error) => {
-          console.error('WebSocket error:', error);
           setError(`WebSocket error: ${error.message || 'Connection error'}`);
         });
       } catch (error) {
-        console.error('Failed to establish WebSocket connection:', error);
         setError(`Failed to establish real-time connection: ${error.message}`);
       }
     };
@@ -123,6 +121,34 @@ const TestExecution = () => {
       websocketService.disconnect();
     };
   }, [taskId]);
+
+  // Automatically scroll to the bottom of logs when new logs are added
+  useEffect(() => {
+    if (logsEndRef.current) {
+      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [logs]);
+
+  // Fetch the final results when tests are complete
+  useEffect(() => {
+    if (status.complete && taskId) {
+      fetchFinalResults();
+    }
+  }, [status.complete, taskId]);
+
+  const fetchFinalResults = async () => {
+    try {
+      // In a real implementation, you might want to fetch the complete
+      // results from your API here using the taskId
+      
+      // For now, we'll use the results we received from the WebSocket
+      if (saveTestResults && testResults.length > 0) {
+        await saveTestResults(testResults, taskId);
+      }
+    } catch (error) {
+      setError(`Failed to fetch final results: ${error.message}`);
+    }
+  };
 
   if (loading) {
     return (

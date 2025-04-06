@@ -38,20 +38,16 @@ const formatModelType = (modelType) => {
  */
 export const getAllTests = async () => {
   try {
-    console.log('Fetching all tests from backend');
     const response = await fetch(`${API_BASE_URL}/api/tests/model-tests`, fetchOptions);
     
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Error response from API:', errorText);
       throw new Error(`Failed to fetch tests: ${response.status} ${response.statusText}`);
     }
     
     const data = await response.json();
-    console.log('Received tests data from backend:', data);
     return data;
   } catch (error) {
-    console.error('Error fetching tests:', error);
     throw error;
   }
 };
@@ -63,8 +59,6 @@ export const getAllTests = async () => {
  */
 export const getTestsByCategory = async (category) => {
   try {
-    console.log(`Fetching tests for category "${category}" from backend`);
-    
     // Use model-tests endpoint with category filter
     const params = new URLSearchParams();
     params.append('category', category);
@@ -73,12 +67,10 @@ export const getTestsByCategory = async (category) => {
     
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Error response from API:', errorText);
       throw new Error(`Failed to fetch tests by category: ${response.status} ${response.statusText}`);
     }
     
     const data = await response.json();
-    console.log(`Received tests for category "${category}" from backend:`, data);
     
     // Return the tests as an array
     if (data && data.tests) {
@@ -87,7 +79,6 @@ export const getTestsByCategory = async (category) => {
     
     return [];
   } catch (error) {
-    console.error(`Error fetching tests for category "${category}":`, error);
     return [];
   }
 };
@@ -111,7 +102,6 @@ export const runTests = async (testIds, modelConfig, testParameters = {}, logCal
     }
 
     const log = (message) => {
-      console.log(message);
       if (logCallback && typeof logCallback === 'function') {
         logCallback(message);
       }
@@ -162,7 +152,6 @@ export const runTests = async (testIds, modelConfig, testParameters = {}, logCal
     }
 
     log('Sending request to API...');
-    console.log('Request payload:', payload);
 
     const response = await fetch(`${API_BASE_URL}/api/tests/run`, {
       method: 'POST',
@@ -179,7 +168,6 @@ export const runTests = async (testIds, modelConfig, testParameters = {}, logCal
 
     const data = await response.json();
     log('API response received');
-    console.log('Response:', data);
 
     if (data && (data.task_id || data.test_run_id)) {
       const taskId = data.task_id || data.test_run_id;
@@ -189,7 +177,6 @@ export const runTests = async (testIds, modelConfig, testParameters = {}, logCal
       throw new Error('No task ID in response');
     }
   } catch (error) {
-    console.error('Error running tests:', error);
     throw error;
   }
 };
@@ -201,12 +188,8 @@ export const runTests = async (testIds, modelConfig, testParameters = {}, logCal
  */
 export const getFilteredTests = async (modelConfig) => {
   try {
-    console.log('getFilteredTests called with:', modelConfig);
-    console.log('Using API base URL:', API_BASE_URL);
-    
     // Ensure we have at least one required parameter
     if (!modelConfig || (!modelConfig.modality && !modelConfig.model_type)) {
-      console.warn('No model parameters provided for filtering tests. Using defaults.');
       // Default to NLP and Text Generation if nothing provided
       modelConfig = {
         modality: 'NLP',
@@ -225,22 +208,14 @@ export const getFilteredTests = async (modelConfig) => {
     }
 
     const url = `${API_BASE_URL}/api/tests/model-tests?${params.toString()}`;
-    console.log('Fetching filtered tests from backend URL:', url);
-    console.log('Using fetch options:', fetchOptions);
     
     // Use the correct API endpoint for model-specific tests
     const response = await fetch(url, fetchOptions);
-    console.log('Response status:', response.status);
-    console.log('Response headers:', Object.fromEntries([...response.headers.entries()]));
     
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`Error ${response.status} response from API:`, errorText);
-      console.error('Request URL:', url);
-      console.error('Request options:', fetchOptions);
       
       if (response.status === 422) {
-        console.error('Unprocessable Content Error. API parameters may be incorrect.', modelConfig);
         // Return empty array instead of throwing to prevent blocking the UI
         return [];
       }
@@ -249,26 +224,19 @@ export const getFilteredTests = async (modelConfig) => {
     }
     
     const data = await response.json();
-    console.log('Received filtered tests data from backend:', data);
     
     // Transform the response to array format for the UI
     if (data && data.tests) {
       // Convert the tests object to an array
       const testsArray = Object.values(data.tests);
-      console.log('Converted tests to array format, count:', testsArray.length);
       return testsArray;
     } else if (Array.isArray(data)) {
       // Already in array format
-      console.log('Data is already in array format, count:', data.length);
       return data;
     } else {
-      console.error('Unexpected data format from API:', data);
       return [];
     }
   } catch (error) {
-    console.error('Error in getFilteredTests:', error);
-    console.error('Model config that caused error:', modelConfig);
-    console.error('API base URL:', API_BASE_URL);
     throw error;
   }
 };
@@ -279,16 +247,12 @@ export const getFilteredTests = async (modelConfig) => {
  */
 export const getTestCategories = async () => {
   try {
-    console.log('Fetching test categories from backend');
     const response = await fetch(`${API_BASE_URL}/api/tests/categories`, fetchOptions);
     
     if (response.ok) {
       const data = await response.json();
-      console.log('Received categories from backend:', data);
       return data;
     } else {
-      console.log('Categories endpoint not available, deriving from tests');
-      
       // If categories endpoint fails, fall back to deriving from tests
       const allTestsData = await getAllTests();
       
@@ -296,19 +260,16 @@ export const getTestCategories = async () => {
         // Extract unique categories from tests
         const testsArray = Object.values(allTestsData.tests);
         const categories = [...new Set(testsArray.map(test => test.category))];
-        console.log('Derived categories from tests:', categories);
         return categories;
       } else if (Array.isArray(allTestsData)) {
         // Handle case where tests are returned as an array
         const categories = [...new Set(allTestsData.map(test => test.category))];
-        console.log('Derived categories from tests array:', categories);
         return categories;
       }
       
       throw new Error('Could not derive categories from tests');
     }
   } catch (error) {
-    console.error('Error fetching test categories:', error);
     throw error;
   }
 };
@@ -320,15 +281,11 @@ export const getTestCategories = async () => {
  */
 export const getTestResults = async (taskId) => {
   if (!taskId) {
-    console.error('[TESTS-SERVICE] No task ID provided to getTestResults');
     throw new Error('Task ID is required');
   }
   
-  console.log(`[TESTS-SERVICE] Fetching test results for task ID: ${taskId}`);
   const TESTS_API_URL = process.env.REACT_APP_API_URL || import.meta.env?.VITE_TESTS_API_URL || 'http://localhost:8000';
   const endpoint = `${TESTS_API_URL}/api/test_runs/${taskId}`;
-  
-  console.log(`[TESTS-SERVICE] Making API request to: ${endpoint}`);
   
   try {
     const response = await fetch(endpoint, {
@@ -339,35 +296,45 @@ export const getTestResults = async (taskId) => {
       }
     });
     
-    // Log full response details for debugging
-    console.log(`[TESTS-SERVICE] Response status: ${response.status} ${response.statusText}`);
-    console.log('[TESTS-SERVICE] Response headers:', Object.fromEntries([...response.headers.entries()]));
-    
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[TESTS-SERVICE] Error response: ${errorText}`);
       throw new Error(`API error: ${response.status} - ${errorText || response.statusText}`);
     }
     
     // Try to parse as JSON
-    let responseData;
     try {
       const responseText = await response.text();
-      console.log('[TESTS-SERVICE] Raw response text (first 500 chars):', responseText.substring(0, 500) + (responseText.length > 500 ? '...' : ''));
-      responseData = JSON.parse(responseText);
+      const responseData = JSON.parse(responseText);
+      return responseData;
     } catch (parseError) {
-      console.error('[TESTS-SERVICE] Failed to parse response as JSON:', parseError);
       throw new Error('Invalid response format');
     }
-    
-    // Log the parsed response
-    console.log('[TESTS-SERVICE] Parsed response (structure):', 
-      Object.keys(responseData).map(key => `${key}: ${typeof responseData[key]}`));
-    
-    // Always return the entire response - let the caller handle extracting the right parts
-    return responseData;
   } catch (error) {
-    console.error('[TESTS-SERVICE] Error fetching test results:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get available models of a specific modality
+ * @param {string} modality - The modality to filter by (e.g., "NLP")
+ * @returns {Promise<Array>} List of available models
+ */
+export const getAvailableModels = async (modality) => {
+  try {
+    const params = new URLSearchParams();
+    if (modality) {
+      params.append('modality', modality);
+    }
+    
+    const response = await fetch(`${API_BASE_URL}/api/models?${params.toString()}`, fetchOptions);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch models: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return data.models || [];
+  } catch (error) {
     throw error;
   }
 };

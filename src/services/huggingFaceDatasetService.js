@@ -37,7 +37,6 @@ export const searchDatasets = async (query, options = {}, apiKey) => {
     
     return await response.json();
   } catch (error) {
-    console.error('Error searching datasets:', error);
     throw error;
   }
 };
@@ -62,7 +61,6 @@ export const getDatasetInfo = async (datasetId, apiKey) => {
     
     return await response.json();
   } catch (error) {
-    console.error(`Error getting dataset info for ${datasetId}:`, error);
     throw error;
   }
 };
@@ -77,12 +75,9 @@ export const getDatasetInfo = async (datasetId, apiKey) => {
  */
 export const getDatasetSample = async (datasetId, split = 'test', count = 10, apiKey) => {
   try {
-    console.log(`Attempting to fetch sample for ${datasetId} with split: ${split}`);
-    
     // Try direct API fetch first - this is the most common pattern
     try {
       const url = `${HF_API_URL}/datasets/${datasetId}/sample?split=${split}&n=${count}`;
-      console.log(`Fetching from: ${url}`);
       
       const response = await fetch(url, {
         headers: {
@@ -93,14 +88,10 @@ export const getDatasetSample = async (datasetId, split = 'test', count = 10, ap
       
       if (response.ok) {
         const data = await response.json();
-        console.log(`Successfully fetched ${data.length} samples using standard endpoint`);
         return data;
       }
-      
-      console.log(`Standard sample endpoint failed with status: ${response.status} - ${response.statusText}`);
-      console.log(`Response content: ${await response.text()}`);
     } catch (error) {
-      console.log('Error with standard sample endpoint:', error.message);
+      // Continue with alternative approaches
     }
     
     // Trying alternative approaches - some datasets use different splits
@@ -111,7 +102,6 @@ export const getDatasetSample = async (datasetId, split = 'test', count = 10, ap
       if (alternateSplit === split) continue; // Skip the one we already tried
       
       try {
-        console.log(`Trying alternative split: ${alternateSplit}`);
         const url = `${HF_API_URL}/datasets/${datasetId}/sample?split=${alternateSplit}&n=${count}`;
         const response = await fetch(url, {
           headers: {
@@ -122,17 +112,15 @@ export const getDatasetSample = async (datasetId, split = 'test', count = 10, ap
         
         if (response.ok) {
           const data = await response.json();
-          console.log(`Successfully fetched ${data.length} samples from ${alternateSplit} split`);
           return data;
         }
       } catch (err) {
-        console.log(`Failed with alternative split ${alternateSplit}:`, err.message);
+        // Continue with next split option
       }
     }
     
     // Try using the Hugging Face Datasets API directly (this is a newer approach)
     try {
-      console.log('Trying Hugging Face datasets hub API approach');
       // Get dataset info to find available splits
       const infoResponse = await fetch(`${HF_API_URL}/datasets/${datasetId}`, {
         headers: {
@@ -148,13 +136,10 @@ export const getDatasetSample = async (datasetId, split = 'test', count = 10, ap
       
       // Direct dataset API - sometimes works when the sample endpoint doesn't
       if (datasetInfo.id) {
-        console.log('Attempting to fetch data directly from dataset API');
-        
         // Determine available splits
         let availableSplits = [];
         if (datasetInfo.splits && Object.keys(datasetInfo.splits).length > 0) {
           availableSplits = Object.keys(datasetInfo.splits);
-          console.log('Available splits found in metadata:', availableSplits);
         } else {
           availableSplits = splitOptions;
         }
@@ -172,8 +157,6 @@ export const getDatasetSample = async (datasetId, split = 'test', count = 10, ap
               const directData = await directResponse.json();
               
               if (directData && directData.rows && directData.rows.length > 0) {
-                console.log(`Successfully fetched ${directData.rows.length} rows via datasets-server API`);
-                
                 // Convert the row format to flat objects
                 const samples = directData.rows.map(row => {
                   // Extract the row values into a flat object
@@ -190,25 +173,22 @@ export const getDatasetSample = async (datasetId, split = 'test', count = 10, ap
                 });
                 
                 if (samples.length > 0) {
-                  console.log('Sample from direct API:', samples[0]);
                   return samples;
                 }
               }
             }
           } catch (directErr) {
-            console.log(`Error fetching from datasets-server API with split ${splitName}:`, directErr.message);
+            // Continue with next split
           }
         }
       }
     } catch (infoErr) {
-      console.log('Error getting dataset info for direct API approach:', infoErr.message);
+      // Continue with fallback
     }
     
     // No real data could be retrieved
-    console.warn(`Could not fetch any real samples for dataset ${datasetId}. Please try a different dataset or check the dataset ID.`);
-    throw new Error(`Could not fetch any real samples for dataset ${datasetId}. No mock data will be generated as per your request.`);
+    throw new Error(`Could not fetch any real samples for dataset ${datasetId}. Please try a different dataset or check the dataset ID.`);
   } catch (error) {
-    console.error(`Error getting dataset sample for ${datasetId}:`, error);
     throw error;
   }
 };
@@ -219,7 +199,6 @@ export const getDatasetSample = async (datasetId, split = 'test', count = 10, ap
  * @returns {Array} - Mock dataset samples
  */
 export const createMockDatasetSamples = (datasetId) => {
-  console.log(`Creating mock samples for ${datasetId}`);
   const samples = [];
   
   // Create 5 basic samples with common fields
@@ -234,7 +213,6 @@ export const createMockDatasetSamples = (datasetId) => {
     });
   }
   
-  console.log(`Created ${samples.length} mock samples with standard fields`);
   return samples;
 };
 
@@ -255,23 +233,12 @@ export const createDatasetAdapter = async (datasetConfig, options = {}) => {
   const apiKey = datasetConfig.api_key;
   const split = datasetConfig.split || 'test';
   
-  if (verbose) {
-    console.log('=== Initializing Dataset ===');
-    console.log(`Dataset ID: ${datasetId}`);
-    console.log(`Split: ${split}`);
-  }
-  
   try {
     // Get dataset metadata
     const datasetInfo = await getDatasetInfo(datasetId, apiKey);
     
     // Get sample data to verify access and understand structure
     const sampleData = await getDatasetSample(datasetId, split, 5, apiKey);
-    
-    if (verbose) {
-      console.log('Dataset info:', datasetInfo);
-      console.log('Sample data:', sampleData);
-    }
     
     // Create the dataset adapter object
     return {
@@ -314,9 +281,6 @@ export const createDatasetAdapter = async (datasetConfig, options = {}) => {
       }
     };
   } catch (error) {
-    if (verbose) {
-      console.error('Error creating dataset adapter:', error);
-    }
     throw error;
   }
 };

@@ -79,7 +79,7 @@ export const AppProvider = ({ children }) => {
         setComplianceScores(JSON.parse(savedScores));
       }
     } catch (error) {
-      console.error('Error loading state from localStorage:', error);
+      // Error loading from localStorage
     }
   }, []);
 
@@ -89,23 +89,17 @@ export const AppProvider = ({ children }) => {
     if (!modelConfig) return [];
     
     try {
-      console.log('Explicitly fetching tests for model:', modelConfig);
-      
       // Create API-compatible parameters
       const apiParams = {
         modality: modelConfig.modality || modelConfig.modelCategory || 'NLP',
         model_type: modelConfig.sub_type || modelConfig.modelType || ''
       };
       
-      console.log('Sending API params for getFilteredTests:', apiParams);
-      
       // Fetch tests based on model configuration
       const tests = await getFilteredTests(apiParams);
-      console.log('Fetched available tests:', tests);
       setAvailableTests(tests);
       return tests;
     } catch (error) {
-      console.error('Error fetching available tests:', error);
       setAvailableTests([]);
       return [];
     }
@@ -159,18 +153,8 @@ export const AppProvider = ({ children }) => {
    * @param {Object} scores - Compliance scores to save
    */
   const saveTestResults = (results, scores) => {
-    console.log('[CONTEXT] saveTestResults called with:', {
-      resultsType: typeof results,
-      hasResults: results ? 'yes' : 'no',
-      resultsLength: results ? Object.keys(results).length : 0,
-      scoresType: typeof scores,
-      hasScores: scores ? 'yes' : 'no',
-      scoresLength: scores ? Object.keys(scores).length : 0,
-    });
-
     // Validate that results is an object
     if (!results || typeof results !== 'object') {
-      console.error('[CONTEXT] Invalid results provided to saveTestResults:', results);
       return false;
     }
 
@@ -178,26 +162,21 @@ export const AppProvider = ({ children }) => {
       // Save to state
       setTestResults(results);
       setComplianceScores(scores || {});
-      console.log('[CONTEXT] Successfully saved test results and scores to context');
 
       // Also save to localStorage for persistence
       try {
         const resultsToSave = JSON.stringify(results);
         localStorage.setItem('testResults', resultsToSave);
-        console.log('[CONTEXT] Saved test results to localStorage:', resultsToSave.length, 'bytes');
         
         if (scores && Object.keys(scores).length > 0) {
           const scoresToSave = JSON.stringify(scores);
           localStorage.setItem('complianceScores', scoresToSave);
-          console.log('[CONTEXT] Saved compliance scores to localStorage:', scoresToSave.length, 'bytes');
         }
         return true;
       } catch (storageError) {
-        console.error('[CONTEXT] Error saving to localStorage:', storageError);
         return false;
       }
     } catch (error) {
-      console.error('[CONTEXT] Error in saveTestResults:', error);
       return false;
     }
   };

@@ -11,19 +11,22 @@ import {
   Divider,
   CircularProgress,
   IconButton,
-  Tooltip
+  Tooltip,
+  Chip,
+  ListItemSecondaryAction
 } from '@mui/material';
 import HistoryIcon from '@mui/icons-material/History';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
-import testResultsService from '../../services/testResultsService';
 import { useNavigate } from 'react-router-dom';
+import { formatDistanceToNow } from 'date-fns';
+import { getRecentResults, deleteResults } from '../../services/testResultsService';
 
 /**
  * Component that displays test run history and allows loading previous results
  */
-const TestRunHistory = ({ limit = 10, onSelectResult = null }) => {
+const TestRunHistory = ({ onViewResults }) => {
   const [testRuns, setTestRuns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -32,48 +35,67 @@ const TestRunHistory = ({ limit = 10, onSelectResult = null }) => {
   // Load test run history on mount
   useEffect(() => {
     loadTestRunHistory();
-  }, [limit]);
+  }, []);
 
   // Function to load test run history
   const loadTestRunHistory = async () => {
     try {
       setLoading(true);
-      const recentRuns = await testResultsService.getRecentResults(limit);
-      setTestRuns(recentRuns);
-      setLoading(false);
+      setError(null);
+      
+      const results = await getRecentResults();
+      
+      // Group results by task ID
+      const groupedResults = {};
+      
+      for (const result of results) {
+        if (!groupedResults[result.task_id]) {
+          groupedResults[result.task_id] = [];
+        }
+        groupedResults[result.task_id].push(result);
+      }
+      
+      // Create history items
+      const historyItems = Object.keys(groupedResults).map(taskId => {
+        const taskResults = groupedResults[taskId];
+        const timestamp = Math.max(...taskResults.map(r => new Date(r.timestamp).getTime()));
+        const testCount = taskResults.length;
+        const modelName = taskResults[0]?.model_name || 'Unknown model';
+        
+        return {
+          taskId,
+          timestamp,
+          testCount,
+          modelName,
+          results: taskResults
+        };
+      });
+      
+      // Sort by timestamp (newest first)
+      historyItems.sort((a, b) => b.timestamp - a.timestamp);
+      
+      setTestRuns(historyItems);
     } catch (error) {
-      console.error('Error loading test run history:', error);
       setError('Failed to load test run history');
+    } finally {
       setLoading(false);
     }
   };
 
   // Function to view a previous test run
-  const viewTestRun = (run) => {
-    if (onSelectResult && typeof onSelectResult === 'function') {
-      onSelectResult(run);
-    } else {
-      // Navigate to results page with the run data
-      navigate('/results', { 
-        state: { 
-          taskId: run.taskId,
-          results: run.results,
-          scores: run.scores,
-          fromHistory: true
-        } 
-      });
+  const viewTestRun = (item) => {
+    if (typeof onViewResults === 'function') {
+      onViewResults(item.results);
     }
   };
 
   // Function to delete a test run
-  const deleteTestRun = async (event, id) => {
-    event.stopPropagation(); // Prevent triggering the parent click
+  const deleteTestRun = async (taskId) => {
     try {
-      await testResultsService.deleteResults(id);
-      // Refresh the list
-      loadTestRunHistory();
+      setError(null);
+      await deleteResults(taskId);
+      await loadTestRunHistory();
     } catch (error) {
-      console.error('Error deleting test run:', error);
       setError('Failed to delete test run');
     }
   };
@@ -113,6 +135,59 @@ const TestRunHistory = ({ limit = 10, onSelectResult = null }) => {
     };
   };
 
+  // Render a single history item
+  const renderHistoryItem = (item) => {
+    const date = new Date(item.timestamp);
+    const timeAgo = formatDistanceToNow(date, { addSuffix: true });
+    
+    return (
+      <React.Fragment key={item.taskId}>
+        <ListItem>
+          <ListItemText
+            primary={
+              <Typography variant="subtitle1">
+                {item.modelName}
+                <Chip 
+                  size="small" 
+                  color="primary" 
+                  sx={{ ml: 1 }} 
+                  label={`${item.testCount} tests`} 
+                />
+              </Typography>
+            }
+            secondary={
+              <Typography variant="body2" color="textSecondary">
+                {timeAgo} ({date.toLocaleString()})
+              </Typography>
+            }
+          />
+          <ListItemSecondaryAction>
+            <Tooltip title="View results">
+              <IconButton 
+                edge="end" 
+                onClick={() => viewTestRun(item)}
+                size="small"
+                sx={{ mr: 1 }}
+              >
+                <VisibilityIcon />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Delete">
+              <IconButton 
+                edge="end" 
+                onClick={() => deleteTestRun(item.taskId)}
+                size="small"
+              >
+                <DeleteIcon />
+              </IconButton>
+            </Tooltip>
+          </ListItemSecondaryAction>
+        </ListItem>
+        <Divider />
+      </React.Fragment>
+    );
+  };
+
   return (
     <Paper sx={{ p: 2, mb: 3, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -130,39 +205,7 @@ const TestRunHistory = ({ limit = 10, onSelectResult = null }) => {
         <Typography variant="body2" sx={{ py: 2 }}>No previous test runs found</Typography>
       ) : (
         <List sx={{ maxHeight: 400, overflow: 'auto' }}>
-          {testRuns.map((run, index) => {
-            const summary = getRunSummary(run);
-            return (
-              <React.Fragment key={run.id || index}>
-                {index > 0 && <Divider />}
-                <ListItem
-                  disablePadding
-                  secondaryAction={
-                    <Tooltip title="Delete">
-                      <IconButton edge="end" onClick={(e) => deleteTestRun(e, run.id)}>
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  }
-                >
-                  <ListItemButton onClick={() => viewTestRun(run)}>
-                    <ListItemIcon>
-                      <VisibilityIcon />
-                    </ListItemIcon>
-                    <ListItemText 
-                      primary={`${summary.modelName} - ${summary.passedTests}/${summary.totalTests} Tests Passed`}
-                      secondary={
-                        <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5 }}>
-                          <AccessTimeIcon fontSize="small" sx={{ mr: 0.5, fontSize: '0.8rem' }} />
-                          <Typography variant="caption">{formatDate(run.timestamp)}</Typography>
-                        </Box>
-                      }
-                    />
-                  </ListItemButton>
-                </ListItem>
-              </React.Fragment>
-            );
-          })}
+          {testRuns.map(renderHistoryItem)}
         </List>
       )}
     </Paper>

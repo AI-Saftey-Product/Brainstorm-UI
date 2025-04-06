@@ -1,306 +1,274 @@
 /**
- * Hugging Face API Service
- * Provides functions to interact with Hugging Face models
+ * HuggingFace Service
+ * Provides API methods for working with Hugging Face models
  */
 
 import api from './api';
 
-// Hugging Face Inference API endpoint
-const HUGGING_FACE_API_URL = 'https://api-inference.huggingface.co/models/';
+const API_BASE_URL = 'https://api-inference.huggingface.co/models';
 
 /**
- * Get a Hugging Face model interface
- * @param {string} modelId - The Hugging Face model ID
- * @param {string} apiKey - The Hugging Face API key
- * @returns {Promise<Object>} - A model interface object
+ * Generate text using a Hugging Face model
+ * @param {string} model - The model ID
+ * @param {string} prompt - The input prompt
+ * @param {Object} [params={}] - Additional parameters for the model
+ * @param {string} [apiKey=null] - Optional API key
+ * @returns {Promise<Object>} - Generated text response
  */
-export const getHuggingFaceModel = async (modelId, apiKey) => {
+export const generateText = async (model, prompt, params = {}, apiKey = null) => {
   try {
-    if (!apiKey) {
-      throw new Error('Hugging Face API key not provided');
+    const url = `${API_BASE_URL}/${model}`;
+    
+    const headers = {};
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
     }
     
-    // Attempt an initial query to verify the model works
-    await queryModel(modelId, 'Hello, world!', apiKey);
-    
-    return {
-      modelId,
-      
-      /**
-       * Query the model
-       * @param {string} input - The input text to query with
-       * @returns {Promise<Object|string>} - The model's response
-       */
-      query: async (input) => {
-        return await queryModel(modelId, input, apiKey);
-      },
-      
-      /**
-       * Get model information
-       * @returns {Promise<Object>} - Model information
-       */
-      getInfo: async () => {
-        return {
-          id: modelId,
-          name: modelId.includes('/') ? modelId.split('/')[1] : modelId,
-          provider: 'huggingface',
-        };
-      }
+    // Default parameters
+    const defaultParams = {
+      max_length: 100,
+      temperature: 0.7,
+      top_p: 0.9,
+      repetition_penalty: 1.0,
+      do_sample: true
     };
-  } catch (error) {
-    console.error(`Error initializing Hugging Face model ${modelId}:`, error);
-    throw new Error(`Failed to initialize model ${modelId}: ${error.message}`);
-  }
-};
-
-/**
- * Get a model adapter for a specified Hugging Face model
- * 
- * @param {Object} modelConfig - Configuration for the model
- * @param {Object} options - Additional options
- * @param {boolean} options.verbose - Enable verbose logging
- * @returns {Object} Model adapter for interacting with the model
- */
-export const getHuggingFaceModelAdapter = async (modelConfig, options = {}) => {
-  const verbose = options.verbose || false;
-  
-  if (!modelConfig.model_id) {
-    throw new Error('Model ID is required in the configuration');
-  }
-  
-  if (!modelConfig.api_key) {
-    throw new Error('API key is required in the configuration');
-  }
-  
-  const modelId = modelConfig.model_id;
-  const apiKey = modelConfig.api_key;
-  
-  if (verbose) {
-    console.log('=== Hugging Face Model Initialization ===');
-    console.log(`Model ID: ${modelId}`);
-    console.log(`Model Type: ${modelConfig.sub_type}`);
-    console.log('Starting initialization process...');
-  }
-  
-  try {
-    if (verbose) console.log('Verifying model accessibility...');
     
-    // Make a test call to the model with a simple input
-    const testResponse = await fetch(`${HUGGING_FACE_API_URL}${modelId}`, {
+    // Merge default and provided parameters
+    const mergedParams = { ...defaultParams, ...params };
+    
+    // Create payload
+    const payload = {
+      inputs: prompt,
+      parameters: mergedParams
+    };
+    
+    // Make API request
+    const response = await api.request(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({ inputs: "Hello, testing model connectivity" })
+      headers,
+      body: JSON.stringify(payload)
     });
     
-    if (!testResponse.ok) {
-      const errorData = await testResponse.json().catch(() => ({}));
-      if (verbose) console.error('Model initialization failed:', errorData);
-      throw new Error(`Failed to initialize model: ${testResponse.status} ${testResponse.statusText} - ${errorData.error || ''}`);
+    return response;
+  } catch (error) {
+    throw error;
+  }
+};
+
+/**
+ * Check if a Hugging Face model is available
+ * @param {string} model - The model ID
+ * @param {string} [apiKey=null] - Optional API key
+ * @returns {Promise<boolean>} - Whether the model is available
+ */
+export const checkModelAvailability = async (model, apiKey = null) => {
+  try {
+    const url = `${API_BASE_URL}/${model}`;
+    
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
     }
     
-    if (verbose) console.log('Model successfully verified. Creating model adapter...');
-    
-    // Create a model adapter that uses the Hugging Face API
-    const modelAdapter = {
-      name: modelConfig.name,
-      modality: modelConfig.modality,
-      sub_type: modelConfig.sub_type,
-      source: 'huggingface',
-      model_id: modelId,
-      api_key: apiKey,
-      verbose,
-      
-      // Method for generating predictions from the model
-      getPrediction: async (input) => {
-        try {
-          if (verbose) {
-            console.log('=== Making Prediction Request ===');
-            console.log(`Input: ${input}`);
-          }
-          
-          const result = await queryModel(modelId, input, apiKey, { verbose });
-          
-          if (verbose) console.log('Processing prediction response...');
-          
-          // Process and standardize the response format
-          const processedResult = processHuggingFaceResponse(result, modelConfig.sub_type);
-          
-          if (verbose) {
-            console.log('Processed prediction result:');
-            console.log(JSON.stringify(processedResult, null, 2));
-          }
-          
-          // Ensure the response has both prediction and text fields
-          return {
-            ...processedResult,
-            text: processedResult.prediction,
-            raw: result
-          };
-        } catch (error) {
-          if (verbose) console.error('Error in getPrediction:', error);
-          throw error;
-        }
+    // Make a small test query
+    const payload = {
+      inputs: "Hello",
+      parameters: {
+        max_length: 5,
+        return_full_text: false
       },
-
-      /**
-       * Get model information
-       * @returns {Object} - Information about the model
-       */
-      getModelInfo: () => {
-        const info = {
-          name: modelConfig.name,
-          modality: modelConfig.modality,
-          sub_type: modelConfig.sub_type,
-          source: 'huggingface',
-          model_id: modelId
-        };
-        if (verbose) {
-          console.log('Model Information:');
-          console.log(JSON.stringify(info, null, 2));
-        }
-        return info;
+      options: {
+        wait_for_model: false
       }
     };
-
-    // Test the getPrediction method to ensure it's working
-    if (verbose) console.log('Testing model prediction...');
-    try {
-      await modelAdapter.getPrediction("Test input");
-      if (verbose) console.log('Model prediction test successful');
-    } catch (error) {
-      if (verbose) console.error('Model prediction test failed:', error);
-      throw new Error(`Model adapter initialization failed: ${error.message}`);
-    }
-
-    if (verbose) console.log('=== Model Initialization Complete ===');
-    return modelAdapter;
+    
+    // Make API request
+    const response = await api.request(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload)
+    });
+    
+    // If we get here, the model is available or loading
+    return !response.error;
   } catch (error) {
-    if (verbose) {
-      console.error('=== Model Initialization Failed ===');
-      console.error('Error details:', error);
+    // If error contains "loading" or "currently loading", the model is still loading but available
+    if (error.message && (error.message.includes('loading') || error.message.includes('currently loading'))) {
+      return true;
     }
-    throw error;
+    // Otherwise, the model is not available
+    return false;
   }
 };
 
 /**
- * Query a Hugging Face model
- * @param {string} modelId - The Hugging Face model ID
- * @param {string} input - The input text
- * @param {string} apiKey - The Hugging Face API key
- * @param {Object} options - Additional options
- * @param {boolean} options.verbose - Enable verbose logging
- * @returns {Promise<Object|string>} - The model's response
+ * Get information about a Hugging Face model
+ * @param {string} model - The model ID
+ * @param {string} [apiKey=null] - Optional API key
+ * @returns {Promise<Object>} - Model information
  */
-const queryModel = async (modelId, input, apiKey, options = {}) => {
-  const verbose = options.verbose || false;
-  
+export const getModelInfo = async (model, apiKey = null) => {
   try {
-    const maxRetries = 3;
-    let lastError = null;
+    const url = `https://huggingface.co/api/models/${model}`;
     
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      if (verbose) {
-        console.log(`\nAttempt ${attempt} of ${maxRetries}`);
-        console.log(`Querying model: ${modelId}`);
-      }
-      
-      try {
-        if (verbose) console.log('Sending request to Hugging Face API...');
-        
-        const response = await fetch(`${HUGGING_FACE_API_URL}${modelId}`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ 
-            inputs: input,
-            options: { wait_for_model: true }
-          })
-        });
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          if (verbose) console.error('Request failed:', errorText);
-          throw new Error(`API request failed: ${response.status} ${response.statusText} - ${errorText}`);
-        }
-        
-        if (verbose) console.log('Successfully received response from API');
-        
-        const data = await response.json();
-        
-        if (verbose) {
-          console.log('Response data:');
-          console.log(JSON.stringify(data, null, 2));
-        }
-        
-        return data;
-      } catch (error) {
-        lastError = error;
-        if (verbose) console.error(`Attempt ${attempt} failed:`, error);
-        if (attempt < maxRetries) {
-          // Wait before retrying
-          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-        }
-      }
+    const headers = {};
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
     }
     
-    throw lastError || new Error('All attempts failed');
+    // Make API request
+    const response = await api.request(url, {
+      method: 'GET',
+      headers
+    });
+    
+    return response;
   } catch (error) {
-    console.error('Error querying Hugging Face model:', error);
     throw error;
   }
 };
 
 /**
- * Process and standardize response from Hugging Face API based on model type
- * 
- * @param {Object} response - Raw response from Hugging Face API
- * @param {string} modelType - Type of model used
- * @returns {Object} Standardized prediction result
+ * Search for models on Hugging Face
+ * @param {string} query - Search query
+ * @param {Object} [params={}] - Search parameters
+ * @param {string} [apiKey=null] - Optional API key
+ * @returns {Promise<Object>} - Search results
  */
-const processHuggingFaceResponse = (response, modelType) => {
-  let prediction;
-  let confidence = 0.5;
-
-  // Handle different response formats
-  if (Array.isArray(response)) {
-    if (response[0]?.generated_text) {
-      prediction = response[0].generated_text;
-      confidence = response[0].score || 0.5;
-    } else if (response[0]?.text) {
-      prediction = response[0].text;
-      confidence = response[0].score || 0.5;
-    } else {
-      prediction = JSON.stringify(response[0]);
+export const searchModels = async (query, params = {}, apiKey = null) => {
+  try {
+    let url = `https://huggingface.co/api/models?search=${encodeURIComponent(query)}`;
+    
+    // Add params to URL
+    if (params.filter) {
+      url += `&filter=${encodeURIComponent(params.filter)}`;
     }
-  } else if (typeof response === 'object') {
-    if (response.generated_text) {
-      prediction = response.generated_text;
-      confidence = response.score || 0.5;
-    } else if (response.text) {
-      prediction = response.text;
-      confidence = response.score || 0.5;
-    } else {
-      prediction = JSON.stringify(response);
+    if (params.limit) {
+      url += `&limit=${params.limit}`;
     }
-  } else if (typeof response === 'string') {
-    prediction = response;
-  } else {
-    prediction = JSON.stringify(response);
+    if (params.sort) {
+      url += `&sort=${encodeURIComponent(params.sort)}`;
+    }
+    
+    const headers = {};
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+    
+    // Make API request
+    const response = await api.request(url, {
+      method: 'GET',
+      headers
+    });
+    
+    return response;
+  } catch (error) {
+    throw error;
   }
-
-  return {
-    prediction,
-    confidence,
-    classification: typeof response === 'object' && response.label ? response.label : undefined
-  };
 };
 
-export default {
-  getHuggingFaceModelAdapter
+/**
+ * Get available datasets from Hugging Face
+ * @param {string} [query=''] - Search query
+ * @param {Object} [params={}] - Search parameters
+ * @param {string} [apiKey=null] - Optional API key
+ * @returns {Promise<Object>} - Dataset search results
+ */
+export const searchDatasets = async (query = '', params = {}, apiKey = null) => {
+  try {
+    let url = `https://huggingface.co/api/datasets`;
+    
+    if (query) {
+      url += `?search=${encodeURIComponent(query)}`;
+    }
+    
+    // Add params to URL
+    if (params.filter) {
+      url += query ? `&filter=${encodeURIComponent(params.filter)}` : `?filter=${encodeURIComponent(params.filter)}`;
+    }
+    if (params.limit) {
+      url += url.includes('?') ? `&limit=${params.limit}` : `?limit=${params.limit}`;
+    }
+    if (params.sort) {
+      url += url.includes('?') ? `&sort=${encodeURIComponent(params.sort)}` : `?sort=${encodeURIComponent(params.sort)}`;
+    }
+    
+    const headers = {};
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+    
+    // Make API request
+    const response = await api.request(url, {
+      method: 'GET',
+      headers
+    });
+    
+    return response;
+  } catch (error) {
+    throw error;
+  }
+};
+
+/**
+ * Get dataset information from Hugging Face
+ * @param {string} dataset - The dataset ID
+ * @param {string} [apiKey=null] - Optional API key
+ * @returns {Promise<Object>} - Dataset information
+ */
+export const getDatasetInfo = async (dataset, apiKey = null) => {
+  try {
+    const url = `https://huggingface.co/api/datasets/${dataset}`;
+    
+    const headers = {};
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+    
+    // Make API request
+    const response = await api.request(url, {
+      method: 'GET',
+      headers
+    });
+    
+    return response;
+  } catch (error) {
+    throw error;
+  }
+};
+
+/**
+ * Get samples from a Hugging Face dataset
+ * @param {string} dataset - The dataset ID
+ * @param {string} [split='train'] - The dataset split
+ * @param {number} [limit=10] - Maximum number of samples
+ * @param {string} [apiKey=null] - Optional API key
+ * @returns {Promise<Array>} - Dataset samples
+ */
+export const getDatasetSample = async (dataset, split = 'train', limit = 10, apiKey = null) => {
+  try {
+    // First get info about the dataset to understand its structure
+    const datasetInfo = await getDatasetInfo(dataset, apiKey);
+    
+    // Now get actual samples
+    const url = `https://huggingface.co/api/datasets/${dataset}/data?split=${split}&limit=${limit}`;
+    
+    const headers = {};
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+    
+    // Make API request
+    const response = await api.request(url, {
+      method: 'GET',
+      headers
+    });
+    
+    return response;
+  } catch (error) {
+    throw error;
+  }
 }; 

@@ -38,11 +38,6 @@ const api = {
           data: errorData,
         };
         
-        // Log errors in development
-        if (import.meta.env.DEV) {
-          console.error('API Error:', customError);
-        }
-        
         throw customError;
       }
       
@@ -54,11 +49,6 @@ const api = {
       
       return response.text();
     } catch (error) {
-      // Log errors in development
-      if (import.meta.env.DEV && !error.status) {
-        console.error('API Error:', error);
-      }
-      
       throw error;
     }
   },
