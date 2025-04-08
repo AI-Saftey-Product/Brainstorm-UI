@@ -115,6 +115,9 @@ const RunTestsPage = () => {
   // Add new state for test results data source
   const [testResultsDataSource, setTestResultsDataSource] = useState([]);
   
+  // Add new state for real-time test details
+  const [testDetails, setTestDetails] = useState([]);
+  
   // Initialize test selection when component mounts
   useEffect(() => {
     // Priority: Tests from location state (from TestConfig page)
@@ -330,6 +333,9 @@ const RunTestsPage = () => {
   };
   
   const handleRunTests = async () => {
+    // Reset test details when starting new tests
+    setTestDetails([]);
+    
     if (!modelAdapter) {
       setError('No model adapter available. Please select a model configuration.');
       return;
@@ -627,6 +633,41 @@ const RunTestsPage = () => {
               addLog(`Test started: ${data.test_name} (${data.test_category})`);
               break;
               
+            // Add handlers for the test detail messages
+            case 'model_input':
+              addLog(`Model Input (${data.test_id}): ${data.prompt_type} prompt received`);
+              // Add to test details
+              setTestDetails(prev => [...prev, {
+                type: 'input',
+                testId: data.test_id,
+                content: data.prompt,
+                promptType: data.prompt_type,
+                timestamp: data.timestamp || new Date().toISOString()
+              }]);
+              break;
+              
+            case 'model_output':
+              addLog(`Model Output (${data.test_id}): response received`);
+              // Add to test details
+              setTestDetails(prev => [...prev, {
+                type: 'output',
+                testId: data.test_id,
+                content: data.output,
+                timestamp: data.timestamp || new Date().toISOString()
+              }]);
+              break;
+              
+            case 'evaluation_result':
+              addLog(`Evaluation (${data.test_id}): score ${data.evaluation.strong_reject_score || 'N/A'}`);
+              // Add to test details
+              setTestDetails(prev => [...prev, {
+                type: 'evaluation',
+                testId: data.test_id,
+                content: data.evaluation,
+                timestamp: data.timestamp || new Date().toISOString()
+              }]);
+              break;
+              
             default:
               // Handle unknown message type
               break;
@@ -641,6 +682,11 @@ const RunTestsPage = () => {
         websocketService.persistentOn('test_complete', processMessage);
         websocketService.persistentOn('test_failed', processMessage);
         websocketService.persistentOn('test_started', processMessage);
+        
+        // Add handlers for the test detail messages
+        websocketService.persistentOn('model_input', processMessage);
+        websocketService.persistentOn('model_output', processMessage);
+        websocketService.persistentOn('evaluation_result', processMessage);
         
         // STEP 1: First connect to WebSocket without a task ID to get a new test run ID
         addLog('Connecting to WebSocket to get test run ID...');
@@ -1217,6 +1263,83 @@ const RunTestsPage = () => {
           )}
         </>
       ) : null}
+      
+      {/* Add the Real-Time Test Details section after the test summary section - always visible */}
+      <Paper sx={{ p: 3, mb: 3, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
+        <Typography variant="h6" gutterBottom>
+          Real-Time Test Details
+        </Typography>
+        
+        <Box sx={{ maxHeight: '400px', overflowY: 'auto', mt: 2 }}>
+          {testDetails.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              {runningTests ? "Waiting for test details..." : "No test details available. Run tests to see real-time results here."}
+            </Typography>
+          ) : (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {testDetails.map((item, index) => (
+                <Paper key={index} variant="outlined" sx={{ p: 2 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography variant="subtitle2" color="primary">
+                      {item.type === 'input' ? 'Model Input' : 
+                       item.type === 'output' ? 'Model Output' : 
+                       item.type === 'evaluation' ? 'Evaluation' : 'Event'}
+                      {item.type === 'input' && ` (${item.promptType})`}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {new Date(item.timestamp).toLocaleTimeString()}
+                    </Typography>
+                  </Box>
+                  
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    Test ID: {item.testId}
+                  </Typography>
+                  
+                  <Box sx={{ mt: 1, p: 1, bgcolor: 'background.default', borderRadius: 1 }}>
+                    {item.type === 'input' || item.type === 'output' ? (
+                      <Typography component="pre" variant="body2" sx={{ 
+                        whiteSpace: 'pre-wrap', 
+                        fontFamily: 'monospace', 
+                        fontSize: '0.8rem',
+                        maxHeight: '200px',
+                        overflowY: 'auto'
+                      }}>
+                        {item.content}
+                      </Typography>
+                    ) : item.type === 'evaluation' ? (
+                      <>
+                        <Typography variant="subtitle2">Scores:</Typography>
+                        {item.content.scores && Object.entries(item.content.scores).map(([key, value]) => (
+                          <Typography key={key} variant="body2">
+                            {key}: {value}
+                          </Typography>
+                        ))}
+                        {item.content.strong_reject_score !== undefined && (
+                          <Typography variant="body2">
+                            StrongREJECT Score: {item.content.strong_reject_score}
+                          </Typography>
+                        )}
+                        {item.content.explanation && (
+                          <>
+                            <Typography variant="subtitle2" sx={{ mt: 1 }}>Explanation:</Typography>
+                            <Typography variant="body2">
+                              {item.content.explanation}
+                            </Typography>
+                          </>
+                        )}
+                      </>
+                    ) : (
+                      <Typography variant="body2">
+                        {JSON.stringify(item.content, null, 2)}
+                      </Typography>
+                    )}
+                  </Box>
+                </Paper>
+              ))}
+            </Box>
+          )}
+        </Box>
+      </Paper>
     </Container>
   );
 };
