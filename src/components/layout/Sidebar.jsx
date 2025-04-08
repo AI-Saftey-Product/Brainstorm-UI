@@ -107,7 +107,7 @@ const Sidebar = ({ open }) => {
                 variant="caption"
                 sx={{
                   px: 2,
-                  py: 2,
+                  py: 1.5,
                   display: 'block',
                   color: 'text.secondary',
                   fontWeight: 500,
@@ -130,10 +130,12 @@ const Sidebar = ({ open }) => {
               onClick={() => navigate(item.path)}
               sx={{
                 borderRadius: '6px',
-                mb: 0.5,
-                py: 1,
-                color: active ? 'text.primary' : 'text.secondary',
+                mb: 0.2,
+                py: 0.7,
+                color: active ? '#000000' : '#888888',
                 bgcolor: active ? 'rgba(0, 0, 0, 0.04)' : 'transparent',
+                borderLeft: active ? '3px solid #000000' : '3px solid transparent',
+                paddingLeft: active ? '13px' : '16px', // Adjust padding to compensate for the border
                 '&:hover': {
                   bgcolor: active ? 'rgba(0, 0, 0, 0.06)' : 'rgba(0, 0, 0, 0.02)',
                 },
@@ -143,8 +145,8 @@ const Sidebar = ({ open }) => {
               <ListItemIcon 
                 sx={{ 
                   minWidth: 32,
-                  color: active ? 'text.primary' : 'text.secondary',
-                  opacity: active ? 1 : 0.7,
+                  color: active ? '#000000' : '#888888',
+                  opacity: active ? 1 : 0.9,
                   '& svg': {
                     strokeWidth: 1.5
                   }
@@ -157,11 +159,12 @@ const Sidebar = ({ open }) => {
                 primaryTypographyProps={{
                   fontSize: '0.875rem',
                   fontWeight: active ? 500 : 400,
-                  letterSpacing: '-0.01em'
+                  letterSpacing: '-0.01em',
+                  color: active ? '#000000' : '#888888'
                 }}
                 sx={{
                   '& .MuiTypography-root': {
-                    transition: 'font-weight 0.15s ease-in-out'
+                    transition: 'font-weight 0.15s ease-in-out, color 0.15s ease-in-out'
                   }
                 }}
               />

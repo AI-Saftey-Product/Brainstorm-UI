@@ -40,6 +40,8 @@ import SeverityChip from '../components/common/SeverityChip';
 import CategoryChip from '../components/common/CategoryChip.jsx';
 import ComplianceScoreGauge from '../components/common/ComplianceScoreGauge';
 import ProgressBar from '../components/common/ProgressBar';
+import TestDetailsPanel from '../components/tests/TestDetailsPanel';
+import TestSidebar from '../components/tests/TestSidebar';
 import { runTests, getFilteredTests } from '../services/testsService';
 import { createModelAdapter } from '../services/modelAdapter';
 import { getSavedModelConfigs, getModelConfigById, saveModelTestResults } from '../services/modelStorageService';
@@ -117,6 +119,12 @@ const RunTestsPage = () => {
   
   // Add new state for real-time test details
   const [testDetails, setTestDetails] = useState([]);
+  
+  // Add new state for error severity
+  const [errorSeverity, setErrorSeverity] = useState('error');
+  
+  // Add new state for selected test
+  const [selectedTestId, setSelectedTestId] = useState(null);
   
   // Initialize test selection when component mounts
   useEffect(() => {
@@ -319,9 +327,11 @@ const RunTestsPage = () => {
           }
         } catch (adapterError) {
           setError(`Failed to initialize model adapter: ${adapterError.message}`);
+          setErrorSeverity('error');
         }
       } catch (error) {
         setError(`Failed to load model configuration: ${error.message}`);
+        setErrorSeverity('error');
       } finally {
         setLoading(false);
       }
@@ -333,11 +343,13 @@ const RunTestsPage = () => {
   };
   
   const handleRunTests = async () => {
-    // Reset test details when starting new tests
+    // Reset test details and selected test when starting new tests
     setTestDetails([]);
+    setSelectedTestId(null);
     
     if (!modelAdapter) {
       setError('No model adapter available. Please select a model configuration.');
+      setErrorSeverity('error');
       return;
     }
     
@@ -361,6 +373,7 @@ const RunTestsPage = () => {
     try {
       setRunningTests(true);
       setError(null);
+      setErrorSeverity('error'); // Reset error severity
       setTestResults([]);
       setComplianceScores({});
       setTestProgress(0);
@@ -406,15 +419,39 @@ const RunTestsPage = () => {
           // Get the message type, defaulting to 'unknown' if not present
           const msgType = data.type || 'unknown';
           
+          // Helper function to normalize test IDs for consistency
+          const normalizeTestId = (testId) => {
+            if (!testId) return testId;
+            
+            // Find the matching test from selectedTests if possible
+            const originalTestId = selectedTests.find(id => {
+              const idNorm = id.toLowerCase().replace(/[-_\s]+/g, '');
+              const testIdNorm = testId.toLowerCase().replace(/[-_\s]+/g, '');
+              return idNorm.includes(testIdNorm) || testIdNorm.includes(idNorm);
+            });
+            
+            // Return the original test ID from selectedTests if found, otherwise the input test ID
+            return originalTestId || testId;
+          };
+          
           // Use switch statement to handle message types
           switch(msgType) {
             case 'test_status_update':
               // Handle test status updates
               const { progress, current_test, test_stats } = data;
+              
+              // Add debug logs before any conditional checks
+              console.log("===== TEST STATUS UPDATE MESSAGE RECEIVED =====");
+              console.log("Data received:", data);
+              console.log("Current runningTests state:", runningTests);
+              console.log("Current selectedTests:", selectedTests);
+              
               if (progress) {
                 setTestProgress(progress);
               }
               if (current_test) {
+                console.log("TEST STATUS UPDATE - received current_test:", current_test);
+                console.log("TEST STATUS UPDATE - test IDs to compare:", selectedTests);
                 setCurrentTestName(current_test);
               }
               if (test_stats) {
@@ -422,13 +459,37 @@ const RunTestsPage = () => {
               }
               break;
               
+            case 'test_progress':
+              // Handle test progress updates
+              console.log("===== TEST PROGRESS MESSAGE RECEIVED =====");
+              console.log("Data received:", data);
+              
+              // Extract the test ID and status, normalizing the test ID
+              const progressTestId = normalizeTestId(data.test_id);
+              const progressStatus = data.status;
+              
+              if (progressTestId && progressStatus === 'running') {
+                // Update current test name to reflect what's running
+                setCurrentTestName(progressTestId);
+                console.log("TEST PROGRESS - set current test to:", progressTestId);
+              }
+              
+              // Update progress if available
+              if (data.current && data.total && data.total > 0) {
+                const calculatedProgress = data.current / data.total;
+                setTestProgress(calculatedProgress);
+                console.log("TEST PROGRESS - updated progress:", calculatedProgress);
+              }
+              break;
+              
             case 'test_result':
               // Handle individual test results
-              const { test_id, test_name, status, score } = data;
+              const resultTestId = normalizeTestId(data.test_id);
+              const { test_name, status, score } = data;
               addLog(`Test completed: ${test_name} - ${status} (Score: ${score})`);
               
               // Validate the test result data
-              if (!test_id || !test_name) {
+              if (!resultTestId || !test_name) {
                 return;
               }
               
@@ -438,7 +499,7 @@ const RunTestsPage = () => {
                 const newResults = Array.isArray(prevResults) ? [...prevResults] : [];
                 
                 // Check if this test is already in the results
-                const testIndex = newResults.findIndex(r => r.test_id === test_id);
+                const testIndex = newResults.findIndex(r => r.test_id === resultTestId);
                 
                 // Update or add the test result
                 if (testIndex !== -1) {
@@ -453,7 +514,7 @@ const RunTestsPage = () => {
                 } else {
                   // Add new test result
                   newResults.push({
-                    test_id,
+                    test_id: resultTestId,
                     test_name,
                     status,
                     score,
@@ -608,11 +669,15 @@ const RunTestsPage = () => {
                   scores: scoresForNavigation
                 };
                 
-                // Navigate to Results page with the data
+                // Just set runningTests to false, but don't navigate away
                 setRunningTests(false);
-                navigate('/results', { state: navigationState });
+                // Display a success message in the UI
+                setError(`Tests completed successfully!`);
+                setErrorSeverity('success');
+                setCurrentTask(taskId);
               } else {
                 setError('No test results were found in the response. Please try again.');
+                setErrorSeverity('error');
                 setRunningTests(false);
               }
               break;
@@ -620,6 +685,7 @@ const RunTestsPage = () => {
             case 'test_failed':
               // Handle test failure
               setError(`Test failed: ${data.message || 'Unknown error'}`);
+              setErrorSeverity('error');
               setRunningTests(false);
               break;
               
@@ -635,11 +701,14 @@ const RunTestsPage = () => {
               
             // Add handlers for the test detail messages
             case 'model_input':
-              addLog(`Model Input (${data.test_id}): ${data.prompt_type} prompt received`);
+              // Normalize the test ID for consistency
+              const inputTestId = normalizeTestId(data.test_id);
+              
+              addLog(`Model Input (${inputTestId}): ${data.prompt_type} prompt received`);
               // Add to test details
               setTestDetails(prev => [...prev, {
                 type: 'input',
-                testId: data.test_id,
+                testId: inputTestId,
                 content: data.prompt,
                 promptType: data.prompt_type,
                 timestamp: data.timestamp || new Date().toISOString()
@@ -647,22 +716,28 @@ const RunTestsPage = () => {
               break;
               
             case 'model_output':
-              addLog(`Model Output (${data.test_id}): response received`);
+              // Normalize the test ID for consistency
+              const outputTestId = normalizeTestId(data.test_id);
+              
+              addLog(`Model Output (${outputTestId}): response received`);
               // Add to test details
               setTestDetails(prev => [...prev, {
                 type: 'output',
-                testId: data.test_id,
+                testId: outputTestId,
                 content: data.output,
                 timestamp: data.timestamp || new Date().toISOString()
               }]);
               break;
               
             case 'evaluation_result':
-              addLog(`Evaluation (${data.test_id}): score ${data.evaluation.strong_reject_score || 'N/A'}`);
+              // Normalize the test ID for consistency
+              const evalTestId = normalizeTestId(data.test_id);
+              
+              addLog(`Evaluation (${evalTestId}): score ${data.evaluation.strong_reject_score || 'N/A'}`);
               // Add to test details
               setTestDetails(prev => [...prev, {
                 type: 'evaluation',
-                testId: data.test_id,
+                testId: evalTestId,
                 content: data.evaluation,
                 timestamp: data.timestamp || new Date().toISOString()
               }]);
@@ -678,6 +753,7 @@ const RunTestsPage = () => {
         // Use persistentOn instead of on to keep handlers across resets/reconnections
         websocketService.persistentOn('message', processMessage);
         websocketService.persistentOn('test_status_update', processMessage);
+        websocketService.persistentOn('test_progress', processMessage);
         websocketService.persistentOn('test_result', processMessage);
         websocketService.persistentOn('test_complete', processMessage);
         websocketService.persistentOn('test_failed', processMessage);
@@ -726,11 +802,13 @@ const RunTestsPage = () => {
       } catch (error) {
         // Handle errors in test initialization
         setError(`Error running tests: ${error.message}`);
+        setErrorSeverity('error');
         addLog(`Error: ${error.message}`);
       }
     } catch (error) {
       // Handle errors in test initialization
       setError(`Error running tests: ${error.message}`);
+      setErrorSeverity('error');
       addLog(`Error: ${error.message}`);
     } finally {
       setRunningTests(false);
@@ -745,7 +823,13 @@ const RunTestsPage = () => {
   };
   
   const handleViewResults = () => {
-    navigate('/results');
+    navigate('/results', { 
+      state: { 
+        taskId: currentTask,
+        results: testResultsDataSource.results,
+        scores: testResultsDataSource.scores
+      }
+    });
   };
   
   const formatMetricValue = (value) => {
@@ -920,6 +1004,7 @@ const RunTestsPage = () => {
   const handleStartTests = () => {
     if (!selectedModelId) {
       setError('Please select a model configuration first');
+      setErrorSeverity('error');
       return;
     }
     navigate('/test-config');
@@ -1082,6 +1167,23 @@ const RunTestsPage = () => {
     // Test results and completion state are tracked in state
   }, [testResults, testComplete]);
   
+  // Add handler for selecting a test
+  const handleSelectTest = (testId) => {
+    setSelectedTestId(testId === selectedTestId ? null : testId);
+  };
+  
+  // Listen for the custom event to clear selected test
+  useEffect(() => {
+    const handleClearSelectedTest = () => {
+      setSelectedTestId(null);
+    };
+    
+    window.addEventListener('clearSelectedTest', handleClearSelectedTest);
+    return () => {
+      window.removeEventListener('clearSelectedTest', handleClearSelectedTest);
+    };
+  }, []);
+  
   return (
     <Container maxWidth="lg">
       <Box sx={{ mt: 4, mb: 6 }}>
@@ -1127,7 +1229,21 @@ const RunTestsPage = () => {
               </FormControl>
               
               {error && (
-                <Alert severity="error" sx={{ mb: 3 }}>
+                <Alert 
+                  severity={errorSeverity} 
+                  sx={{ mb: 3 }}
+                  action={
+                    errorSeverity === 'success' && (
+                      <Button 
+                        color="inherit" 
+                        size="small"
+                        onClick={handleViewResults}
+                      >
+                        View Full Results
+                      </Button>
+                    )
+                  }
+                >
                   {error}
                 </Alert>
               )}
@@ -1264,82 +1380,28 @@ const RunTestsPage = () => {
         </>
       ) : null}
       
-      {/* Add the Real-Time Test Details section after the test summary section - always visible */}
-      <Paper sx={{ p: 3, mb: 3, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
-        <Typography variant="h6" gutterBottom>
-          Real-Time Test Details
-        </Typography>
-        
-        <Box sx={{ maxHeight: '400px', overflowY: 'auto', mt: 2 }}>
-          {testDetails.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">
-              {runningTests ? "Waiting for test details..." : "No test details available. Run tests to see real-time results here."}
-            </Typography>
-          ) : (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {testDetails.map((item, index) => (
-                <Paper key={index} variant="outlined" sx={{ p: 2 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                    <Typography variant="subtitle2" color="primary">
-                      {item.type === 'input' ? 'Model Input' : 
-                       item.type === 'output' ? 'Model Output' : 
-                       item.type === 'evaluation' ? 'Evaluation' : 'Event'}
-                      {item.type === 'input' && ` (${item.promptType})`}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {new Date(item.timestamp).toLocaleTimeString()}
-                    </Typography>
-                  </Box>
-                  
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    Test ID: {item.testId}
-                  </Typography>
-                  
-                  <Box sx={{ mt: 1, p: 1, bgcolor: 'background.default', borderRadius: 1 }}>
-                    {item.type === 'input' || item.type === 'output' ? (
-                      <Typography component="pre" variant="body2" sx={{ 
-                        whiteSpace: 'pre-wrap', 
-                        fontFamily: 'monospace', 
-                        fontSize: '0.8rem',
-                        maxHeight: '200px',
-                        overflowY: 'auto'
-                      }}>
-                        {item.content}
-                      </Typography>
-                    ) : item.type === 'evaluation' ? (
-                      <>
-                        <Typography variant="subtitle2">Scores:</Typography>
-                        {item.content.scores && Object.entries(item.content.scores).map(([key, value]) => (
-                          <Typography key={key} variant="body2">
-                            {key}: {value}
-                          </Typography>
-                        ))}
-                        {item.content.strong_reject_score !== undefined && (
-                          <Typography variant="body2">
-                            StrongREJECT Score: {item.content.strong_reject_score}
-                          </Typography>
-                        )}
-                        {item.content.explanation && (
-                          <>
-                            <Typography variant="subtitle2" sx={{ mt: 1 }}>Explanation:</Typography>
-                            <Typography variant="body2">
-                              {item.content.explanation}
-                            </Typography>
-                          </>
-                        )}
-                      </>
-                    ) : (
-                      <Typography variant="body2">
-                        {JSON.stringify(item.content, null, 2)}
-                      </Typography>
-                    )}
-                  </Box>
-                </Paper>
-              ))}
-            </Box>
-          )}
-        </Box>
-      </Paper>
+      {/* Replace the TestDetailsPanel with the split view */}
+      <Grid container spacing={3}>
+        <Grid item xs={12} md={4} lg={3}>
+          <TestSidebar
+            selectedTests={selectedTests}
+            testResults={testResults}
+            availableTests={availableTests}
+            testDetails={testDetails}
+            runningTests={runningTests}
+            currentTestName={currentTestName}
+            onSelectTest={handleSelectTest}
+            selectedTestId={selectedTestId}
+          />
+        </Grid>
+        <Grid item xs={12} md={8} lg={9}>
+          <TestDetailsPanel 
+            testDetails={testDetails} 
+            runningTests={runningTests} 
+            selectedTestId={selectedTestId}
+          />
+        </Grid>
+      </Grid>
     </Container>
   );
 };
