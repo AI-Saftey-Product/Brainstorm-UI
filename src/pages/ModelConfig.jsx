@@ -105,6 +105,30 @@ const ModelConfigPage = () => {
       errors.api_key = 'API key is required for HuggingFace models';
     }
     
+    // Validate API key for OpenAI models
+    if (formValues.source === 'openai' && !formValues.api_key) {
+      errors.api_key = 'API key is required for OpenAI models';
+    }
+    
+    // Validate OpenAI specific parameters
+    if (formValues.source === 'openai') {
+      if (formValues.temperature < 0 || formValues.temperature > 2) {
+        errors.temperature = 'Temperature must be between 0 and 2';
+      }
+      
+      if (formValues.max_tokens < 1 || formValues.max_tokens > 4096) {
+        errors.max_tokens = 'Max tokens must be between 1 and 4096';
+      }
+      
+      if (formValues.frequency_penalty < -2 || formValues.frequency_penalty > 2) {
+        errors.frequency_penalty = 'Frequency penalty must be between -2 and 2';
+      }
+      
+      if (formValues.presence_penalty < -2 || formValues.presence_penalty > 2) {
+        errors.presence_penalty = 'Presence penalty must be between -2 and 2';
+      }
+    }
+    
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -122,7 +146,7 @@ const ModelConfigPage = () => {
       setModelInitStatus(`Initializing ${formValues.source} model...`);
       
       // Create the model adapter with proper configuration
-      const modelAdapter = await createModelAdapter({
+      const modelConfig = {
         name: formValues.name,
         modality: formValues.modality,
         sub_type: formValues.sub_type,
@@ -130,19 +154,30 @@ const ModelConfigPage = () => {
         api_key: formValues.api_key,
         model_id: formValues.model_id,
         verbose: formValues.verbose
-      });
+      };
+      
+      // Add OpenAI specific parameters if source is OpenAI
+      if (formValues.source === 'openai') {
+        modelConfig.temperature = Number(formValues.temperature);
+        modelConfig.max_tokens = Number(formValues.max_tokens);
+        modelConfig.frequency_penalty = Number(formValues.frequency_penalty);
+        modelConfig.presence_penalty = Number(formValues.presence_penalty);
+        modelConfig.organization_id = formValues.organization_id;
+      }
+      
+      const modelAdapter = await createModelAdapter(modelConfig);
 
       setModelInitStatus(`${formValues.source} model "${formValues.model_id}" initialized successfully!`);
       
       // Gather configuration with the properly initialized adapter
-      const modelConfig = {
-        ...formValues,
+      const fullModelConfig = {
+        ...modelConfig,
         modelAdapter
       };
       
       // Save configuration using context and storage service
-      configureModel(modelConfig);
-      await saveModelConfig(modelConfig);
+      configureModel(fullModelConfig);
+      await saveModelConfig(fullModelConfig);
       
       setConfigSuccess(true);
       setSnackbarOpen(true);
@@ -171,7 +206,7 @@ const ModelConfigPage = () => {
         Model Configuration
       </Typography>
       
-      <Paper sx={{ p: 3, mb: 3 }}>
+      <Paper sx={{ p: 3, mb: 3, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
         <ModelConfigForm
           initialValues={formValues}
           onChange={handleFormChange}
@@ -184,7 +219,7 @@ const ModelConfigPage = () => {
               Configuration Summary
             </Typography>
             
-            <Paper sx={{ p: 3 }}>
+            <Paper sx={{ p: 3, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
               <Box>
                 <Typography variant="subtitle1">Model Information</Typography>
                 <Divider sx={{ mb: 2 }} />

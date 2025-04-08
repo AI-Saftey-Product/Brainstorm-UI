@@ -31,12 +31,27 @@ class WebSocketService {
       'close': [],
       'connection': [],
       'connection_established': [],
-      'raw_message': []  // New event type for raw message data
+      'raw_message': [],  // New event type for raw message data
+      'model_input': [],  // New event type for model inputs
+      'model_output': [], // New event type for model outputs
+      'evaluation_result': [], // New event type for evaluation results
+      'issue_found': []   // New event type for issues found
     };
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
     this.reconnectTimeout = null;
     this.connected = false;
+    
+    // Add a tracking ID for this WebSocket instance
+    this.instanceId = Date.now();
+    // Add a connection ID that changes with each new connection
+    this.connectionId = null;
+    // Track persisted handlers that should survive resets
+    this.persistentHandlers = {
+      'test_complete': [],
+      'test_result': [],
+      'message': []
+    };
   }
 
   /**
@@ -48,6 +63,14 @@ class WebSocketService {
     // Close any existing connection
     this.disconnect();
     
+    // Generate a new connection ID for tracking
+    this.connectionId = Date.now();
+    
+    // Restore any persistent handlers
+    this.restorePersistentHandlers();
+    
+    console.log('🔌 WEBSOCKET: Attempting to connect with taskId:', taskId);
+    
     return new Promise((resolve, reject) => {
       try {
         // Use the correct WebSocket endpoint format based on whether we have a taskId
@@ -58,18 +81,21 @@ class WebSocketService {
           // If we have a taskId, connect to the specific test run
           const taskIdStr = String(taskId);
           wsEndpoint = `${wsUrl.replace(/^http/, 'ws')}/ws/tests/${taskIdStr}`;
-          console.log('Connecting to WebSocket with existing task ID:', wsEndpoint);
         } else {
           // If no taskId, connect to get a new test run ID
           wsEndpoint = `${wsUrl.replace(/^http/, 'ws')}/ws/tests`;
-          console.log('Connecting to WebSocket to get a new test run ID:', wsEndpoint);
         }
         
+        console.log('🔌 WEBSOCKET: Connecting to endpoint:', wsEndpoint);
         this.ws = new WebSocket(wsEndpoint);
         
         this.ws.onopen = () => {
-          console.log('WebSocket connection established');
           this.connected = true;
+          console.log('✅ WEBSOCKET: Connection OPENED successfully');
+          console.log('✅ WEBSOCKET: readyState =', this.ws.readyState);
+          
+          // Log active listeners when connection is established
+          this.logListenerState('Connection established (onopen)');
           
           if (taskId) {
             this.notifyListeners('connection_established', { taskId: String(taskId) });
@@ -77,12 +103,20 @@ class WebSocketService {
           } else {
             // When connecting without a taskId, we expect the server to send us a test run ID
             // This will be handled in the onmessage handler
-            console.log('WebSocket connection established, waiting for test run ID...');
           }
         };
         
         this.ws.onmessage = (event) => {
-          console.log('Raw WebSocket message received:', event.data);
+          // Log every single raw message received
+          console.log('📩 WEBSOCKET RAW MESSAGE RECEIVED:', event.data);
+          
+          // Always log the message type to diagnose message format issues
+          try {
+            const rawData = JSON.parse(event.data);
+            console.log(`📩 WEBSOCKET MESSAGE TYPE: ${rawData.type || 'NO_TYPE'}`);
+          } catch (e) {
+            console.log('📩 WEBSOCKET NON-JSON MESSAGE:', event.data);
+          }
           
           // First, emit the raw message event with the raw data
           this.notifyListeners('raw_message', event.data);
@@ -90,7 +124,43 @@ class WebSocketService {
           try {
             // Try to parse the message as JSON
             const data = JSON.parse(event.data);
-            console.log('Parsed WebSocket message:', data);
+            
+            console.log('📩 WEBSOCKET PARSED MESSAGE:', {
+              type: data.type,
+              timestamp: data.timestamp,
+              message: data
+            });
+            
+            // Log all raw messages to console
+            console.log('[WebSocket Raw Message]:', data);
+            
+            // Log specific message types
+            if (data.type === 'model_input') {
+              console.log('[WebSocket Model Input]:', {
+                test_id: data.test_id,
+                prompt_type: data.prompt_type,
+                prompt: data.prompt
+              });
+            } 
+            else if (data.type === 'model_output') {
+              console.log('[WebSocket Model Output]:', {
+                test_id: data.test_id,
+                output: data.output
+              });
+            }
+            else if (data.type === 'evaluation_result') {
+              console.log('[WebSocket Evaluation Result]:', {
+                test_id: data.test_id,
+                evaluation: data.evaluation
+              });
+            }
+            else if (data.type === 'issue_found') {
+              console.log('[WebSocket Issue Found]:', {
+                test_id: data.test_id,
+                issue_type: data.issue_type,
+                details: data.details
+              });
+            }
             
             // Always emit a generic 'message' event with the full data
             this.notifyListeners('message', data);
@@ -98,21 +168,21 @@ class WebSocketService {
             // If we're waiting for a test run ID (no taskId was provided)
             if (!taskId && (data.test_run_id || data.id)) {
               const testRunId = data.test_run_id || data.id;
-              console.log('Received test run ID from server:', testRunId);
               this.notifyListeners('test_run_id', { test_run_id: testRunId });
               resolve({ test_run_id: testRunId });
             }
             
             // Then check for a message type and emit a specific event if present
             if (data.type) {
-              console.log(`Processing message of type: ${data.type}`);
               this.notifyListeners(data.type, data);
-            } else {
-              console.log('No message type found in WebSocket message');
+              
+              // Special handling for test_complete messages to ensure they're processed
+              if (data.type === 'test_complete') {
+                // Also notify as a 'message' event to make sure it's processed even if specific listeners aren't working
+                this.notifyListeners('message', data);
+              }
             }
           } catch (error) {
-            console.error('Error parsing WebSocket message:', error);
-            
             // If parsing fails, still emit the message event with the raw data
             this.notifyListeners('message', event.data);
             
@@ -124,7 +194,6 @@ class WebSocketService {
                 const match = rawData.match(/test_run_id[\":][\"\s]*([a-zA-Z0-9-_]+)/);
                 if (match && match[1]) {
                   const extractedId = match[1].replace(/[\"']/g, '');
-                  console.log('Extracted test run ID from raw message:', extractedId);
                   this.notifyListeners('test_run_id', { test_run_id: extractedId });
                   resolve({ test_run_id: extractedId });
                 }
@@ -134,15 +203,31 @@ class WebSocketService {
         };
         
         this.ws.onerror = (error) => {
-          console.error('WebSocket error:', error);
           this.connected = false;
+          
+          console.error('❌ WEBSOCKET ERROR:', error);
+          console.error('❌ WEBSOCKET readyState =', this.ws.readyState);
+          
+          // Log active listeners when an error occurs
+          this.logListenerState('WebSocket error (onerror)');
+          
           this.notifyListeners('error', error);
           reject(error);
         };
         
         this.ws.onclose = (event) => {
-          console.log('WebSocket connection closed:', event);
           this.connected = false;
+          
+          console.log('🔌 WEBSOCKET CLOSED:', {
+            code: event.code,
+            reason: event.reason,
+            wasClean: event.wasClean,
+            readyState: this.ws.readyState
+          });
+          
+          // Log active listeners when connection is closed
+          this.logListenerState('Connection closed (onclose)');
+          
           this.notifyListeners('close', event);
           
           // Only reject if we're still waiting for a test run ID
@@ -150,16 +235,7 @@ class WebSocketService {
             reject(new Error('WebSocket connection closed before receiving test run ID'));
           }
         };
-        
-        // Set a timeout for getting the test run ID
-        if (!taskId) {
-          setTimeout(() => {
-            reject(new Error('Timeout waiting for test run ID'));
-          }, 10000);
-        }
       } catch (error) {
-        console.error('Error creating WebSocket connection:', error);
-        this.notifyListeners('error', error);
         reject(error);
       }
     });
@@ -167,117 +243,317 @@ class WebSocketService {
 
   /**
    * Notify all listeners of a specific event type
-   * @param {string} type - Event type
-   * @param {any} data - Event data
+   * @param {string} type - The event type
+   * @param {any} data - The event data
    */
   notifyListeners(type, data) {
-    if (this.eventListeners[type]) {
-      this.eventListeners[type].forEach(callback => {
-        try {
-          callback(data);
-        } catch (error) {
-          console.error(`Error in ${type} listener:`, error);
-        }
-      });
+    // Skip if there are no listeners
+    const listeners = this.eventListeners[type] || [];
+    if (listeners.length === 0) {
+      return;
     }
-  }
-
-  /**
-   * Register a callback for a specific message type
-   * @param {string} type - Message type or event ('message', 'error', 'close', etc.)
-   * @param {Function} callback - Function to call when this message type is received
-   */
-  on(type, callback) {
-    if (typeof callback === 'function') {
-      if (!this.eventListeners[type]) {
-        this.eventListeners[type] = [];
+    
+    const listenerCount = listeners.length;
+    
+    // Create a data preview for debugging
+    let dataPreview = '';
+    try {
+      const strData = JSON.stringify(data);
+      dataPreview = strData.length > 100 ? `${strData.substring(0, 100)}...` : strData;
+    } catch (e) {
+      // Ignore stringify errors
+    }
+    
+    // Call each listener
+    for (let index = 0; index < listeners.length; index++) {
+      const callback = listeners[index];
+      try {
+        callback(data);
+      } catch (error) {
+        // Continue to next listener if one fails
       }
-      this.eventListeners[type].push(callback);
     }
-    return this; // For method chaining
   }
 
   /**
-   * Remove a callback for a specific message type
-   * @param {string} type - Message type
-   * @param {Function} callback - Callback to remove
+   * Register an event listener
+   * @param {string} type - The event type
+   * @param {Function} callback - The callback function
+   * @param {boolean} persistent - Whether the handler survives resets
+   * @returns {Function} - A function to remove the listener
+   */
+  on(type, callback, persistent = false) {
+    // Create a copy of the callback with tracking information
+    const trackedCallback = (...args) => callback(...args);
+    trackedCallback._trackingId = Date.now() + Math.random().toString(36).substring(2, 7);
+    trackedCallback._registeredAt = new Date().toISOString();
+    trackedCallback._listenerType = type;
+    trackedCallback._persistent = persistent;
+    
+    // Store extra tracking data on the stack trace
+    const stack = new Error().stack;
+    trackedCallback._stackTrace = stack;
+    
+    // Ensure the event type exists in the eventListeners object
+    if (!this.eventListeners[type]) {
+      this.eventListeners[type] = [];
+    }
+    
+    // Add the tracked callback to the event listeners
+    this.eventListeners[type].push(trackedCallback);
+    
+    // If this is a persistent handler, also store it separately
+    if (persistent) {
+      if (!this.persistentHandlers[type]) {
+        this.persistentHandlers[type] = [];
+      }
+      this.persistentHandlers[type].push(trackedCallback);
+    }
+    
+    // Return a function to remove the listener
+    return () => this.off(type, trackedCallback);
+  }
+
+  /**
+   * Remove an event listener
+   * @param {string} type - The event type
+   * @param {Function} callback - The callback function to remove
    */
   off(type, callback) {
-    if (this.eventListeners[type]) {
-      this.eventListeners[type] = this.eventListeners[type].filter(cb => cb !== callback);
+    if (!this.eventListeners[type]) {
+      return;
     }
-    return this;
+    
+    const listeners = this.eventListeners[type];
+    const callbackId = callback._trackingId || 'untracked';
+    const registeredAt = callback._registeredAt || 'unknown';
+    const isPersistent = callback._persistent || false;
+    
+    // Find the callback in the listeners array
+    const callbackIndex = listeners.findIndex(listener => listener === callback || listener._trackingId === callbackId);
+    
+    if (callbackIndex !== -1) {
+      // Remove the callback from the array
+      const prevCount = listeners.length;
+      this.eventListeners[type] = listeners.filter((_, index) => index !== callbackIndex);
+      
+      // Also remove from persistent handlers if needed
+      if (isPersistent && this.persistentHandlers[type]) {
+        this.persistentHandlers[type] = this.persistentHandlers[type].filter(
+          handler => handler !== callback && handler._trackingId !== callbackId
+        );
+      }
+    }
   }
 
   /**
-   * Send a message through the WebSocket
-   * @param {Object} data - Data to send
-   * @returns {boolean} - Whether the message was sent successfully
+   * Send data to the WebSocket server
+   * @param {any} data - The data to send
    */
   send(data) {
-    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-      this.socket.send(JSON.stringify(data));
-      return true;
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(typeof data === 'string' ? data : JSON.stringify(data));
     }
-    return false;
   }
 
   /**
-   * Close the WebSocket connection
+   * Disconnect from the WebSocket server
    */
   disconnect() {
     if (this.ws) {
-      // Only close if we're actually connected
-      if (this.connected) {
-        this.ws.close(1000, 'Normal closure');
-        this.connected = false;
-        console.log('WebSocket disconnected, listeners will be preserved for reconnection');
-      }
+      this.connected = false;
+      this.ws.close();
       this.ws = null;
     }
   }
 
   /**
-   * Reset and disconnect WebSocket, clearing all listeners
+   * Reset the WebSocket service, optionally preserving persistent handlers
+   * @param {boolean} preservePersistentHandlers - Whether to preserve persistent handlers
    */
-  reset() {
-    // Only disconnect if we have an active connection
-    if (this.connected) {
-      this.disconnect();
+  reset(preservePersistentHandlers = true) {
+    // Disconnect from the server
+    this.disconnect();
+    
+    // Create a copy of persistent handlers if needed
+    const persistentToBeCopied = {};
+    if (preservePersistentHandlers) {
+      // For each event type that has persistent handlers
+      Object.keys(this.persistentHandlers).forEach(type => {
+        // Get the persistent handlers for this type
+        const handlers = this.persistentHandlers[type] || [];
+        
+        // If there are any, copy them
+        if (handlers.length > 0) {
+          persistentToBeCopied[type] = [...handlers];
+        }
+      });
     }
-    // Clear all listeners
-    this.eventListeners = {
-      'test_status_update': [],
-      'test_result': [],
-      'test_complete': [],
-      'test_failed': [],
-      'message': [],
-      'error': [],
-      'close': [],
-      'connection': [],
-      'connection_established': [],
-      'raw_message': []  // New event type for raw message data
-    };
-    console.log('WebSocket service completely reset, all listeners cleared');
+    
+    // Clear all event listeners
+    this._clearAllListeners();
+    
+    // Restore persistent handlers if needed
+    if (preservePersistentHandlers) {
+      for (const type in persistentToBeCopied) {
+        const persistentOnes = persistentToBeCopied[type] || [];
+        if (persistentOnes.length > 0) {
+          // Make sure the event type exists
+          if (!this.eventListeners[type]) {
+            this.eventListeners[type] = [];
+          }
+          if (!this.persistentHandlers[type]) {
+            this.persistentHandlers[type] = [];
+          }
+          
+          // Add each persistent handler back
+          persistentOnes.forEach(handler => {
+            this.eventListeners[type].push(handler);
+            this.persistentHandlers[type].push(handler);
+          });
+        }
+      }
+    }
+    
+    // Reset other properties
+    this.reconnectAttempts = 0;
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+    
+    // Generate a new instance ID
+    this.instanceId = Date.now();
   }
 
   /**
-   * Check if the WebSocket is currently connected
+   * Clear all event listeners
+   * @private
+   */
+  _clearAllListeners() {
+    // For each event type
+    Object.keys(this.eventListeners).forEach(type => {
+      const listeners = this.eventListeners[type] || [];
+      
+      // Clear the listeners array
+      this.eventListeners[type] = [];
+      
+      // Also clear persistent handlers if they exist
+      if (this.persistentHandlers[type]) {
+        this.persistentHandlers[type] = [];
+      }
+    });
+  }
+
+  /**
+   * Check if the WebSocket is connected
    * @returns {boolean} - Whether the WebSocket is connected
    */
   isConnected() {
-    return this.socket && this.socket.readyState === WebSocket.OPEN;
+    return this.connected && this.ws && this.ws.readyState === WebSocket.OPEN;
   }
 
-  // Helper method to get WebSocket URL from API URL
+  /**
+   * Get the WebSocket URL for a given API URL
+   * @param {string} apiUrl - The API URL
+   * @returns {string} - The WebSocket URL
+   */
   getWebSocketURL(apiUrl) {
-    if (!apiUrl) return null;
-    
-    // Convert http(s):// to ws(s)://
     return apiUrl.replace(/^http/, 'ws').replace(/\/api$/, '');
+  }
+
+  /**
+   * Log the current state of all event listeners
+   * @param {string} context - A description of when this log is being created
+   */
+  logListenerState(context) {
+    // Calculate total listeners
+    let totalListeners = 0;
+    
+    // For each event type
+    Object.keys(this.eventListeners).forEach(type => {
+      const listeners = this.eventListeners[type] || [];
+      totalListeners += listeners.length;
+    });
+  }
+
+  /**
+   * Process a message manually (useful for testing or replaying messages)
+   * @param {any} data - The message data
+   */
+  processMessage(data) {
+    try {
+      // If the data is a string, try to parse it as JSON
+      let parsedData = data;
+      if (typeof data === 'string') {
+        try {
+          parsedData = JSON.parse(data);
+        } catch (e) {
+          // If parsing fails, use the data as-is
+        }
+      }
+      
+      // Notify listeners of the raw message
+      this.notifyListeners('raw_message', data);
+      
+      // Notify listeners of the general message
+      this.notifyListeners('message', parsedData);
+      
+      // If the data has a type, notify type-specific listeners
+      if (parsedData && parsedData.type) {
+        this.notifyListeners(parsedData.type, parsedData);
+      }
+    } catch (error) {
+      // Ignore errors during message processing
+    }
+  }
+
+  /**
+   * Restore persistent handlers after a reset or reconnect
+   */
+  restorePersistentHandlers() {
+    let totalRestored = 0;
+    
+    // For each event type
+    Object.keys(this.persistentHandlers).forEach(type => {
+      const handlers = this.persistentHandlers[type] || [];
+      
+      // If there are handlers to restore
+      if (handlers.length > 0) {
+        // Ensure the event type exists
+        if (!this.eventListeners[type]) {
+          this.eventListeners[type] = [];
+        }
+        
+        // For each handler
+        handlers.forEach(handler => {
+          // Check if the handler already exists to avoid duplicates
+          const existingIndex = this.eventListeners[type].findIndex(
+            listener => listener._trackingId === handler._trackingId
+          );
+          
+          // If it doesn't exist, add it
+          if (existingIndex === -1) {
+            this.eventListeners[type].push(handler);
+            totalRestored++;
+          }
+        });
+      }
+    });
+  }
+
+  /**
+   * Register a persistent event listener that survives resets
+   * @param {string} type - The event type
+   * @param {Function} callback - The callback function
+   * @returns {Function} - A function to remove the listener
+   */
+  persistentOn(type, callback) {
+    return this.on(type, callback, true);
   }
 }
 
-// Export singleton instance
+// Create a singleton instance
 const websocketService = new WebSocketService();
+
 export default websocketService; 

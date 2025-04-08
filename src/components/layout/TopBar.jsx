@@ -55,6 +55,33 @@ const TopBar = ({ onToggleSidebar, isSidebarOpen }) => {
       }];
     }
 
+    if (paths[0] === 'datasets') {
+      return [...breadcrumbs, {
+        label: 'Datasets',
+        path: '/datasets'
+      }];
+    }
+    
+    if (paths[0] === 'dataset-config') {
+      return [...breadcrumbs, {
+        label: 'Datasets',
+        path: '/datasets'
+      }, {
+        label: location.state?.config ? 'Edit Dataset' : 'New Dataset',
+        path: '/dataset-config'
+      }];
+    }
+
+    if (paths[0] === 'dataset' && paths[1]) {
+      return [...breadcrumbs, {
+        label: 'Datasets',
+        path: '/datasets'
+      }, {
+        label: 'Dataset Details',
+        path: `/dataset/${paths[1]}`
+      }];
+    }
+
     // Default case: capitalize and format path segments
     return [
       ...breadcrumbs,

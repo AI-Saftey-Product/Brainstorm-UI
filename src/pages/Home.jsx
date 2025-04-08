@@ -236,6 +236,7 @@ const HomePage = () => {
               <MenuItem value="none">None</MenuItem>
               <MenuItem value="modality">Modality</MenuItem>
               <MenuItem value="type">Type</MenuItem>
+              <MenuItem value="source">Source</MenuItem>
             </Select>
           </FormControl>
 
@@ -273,27 +274,169 @@ const HomePage = () => {
             ))}
           </Grid>
         ) : (
-          <Grid container spacing={3}>
-            {filteredAndSortedConfigs.map((config) => (
-              <Grid item xs={12} md={viewMode === 'grid' ? 6 : 12} key={config.id}>
-                <ModelCard
-                  config={config}
-                  viewMode={viewMode}
-                  onEdit={handleEditConfig}
-                  onDelete={handleDeleteConfig}
-                  onClick={() => handleCardClick(config)}
-                />
+          <>
+            {groupBy === 'none' ? (
+              <Grid container spacing={3}>
+                {filteredAndSortedConfigs.map((config) => (
+                  <Grid item xs={12} md={viewMode === 'grid' ? 6 : 12} key={config.id}>
+                    <ModelCard
+                      config={config}
+                      viewMode={viewMode}
+                      onEdit={handleEditConfig}
+                      onDelete={handleDeleteConfig}
+                      onClick={() => handleCardClick(config)}
+                    />
+                  </Grid>
+                ))}
+                
+                {/* Add New Model Card */}
+                <Grid item xs={12} md={viewMode === 'grid' ? 6 : 12}>
+                  <AddModelCard
+                    viewMode={viewMode}
+                    onClick={handleGetStarted}
+                  />
+                </Grid>
               </Grid>
-            ))}
-            
-            {/* Add New Model Card */}
-            <Grid item xs={12} md={viewMode === 'grid' ? 6 : 12}>
-              <AddModelCard
-                viewMode={viewMode}
-                onClick={handleGetStarted}
-              />
-            </Grid>
-          </Grid>
+            ) : (
+              // Grouped display
+              <Box>
+                {(() => {
+                  // Group configs based on the selected grouping option
+                  const groups = {};
+                  
+                  filteredAndSortedConfigs.forEach(config => {
+                    let groupKey;
+                    
+                    if (groupBy === 'modality') {
+                      groupKey = config.modality || config.modelCategory || 'Unknown';
+                    } else if (groupBy === 'type') {
+                      groupKey = config.sub_type || config.modelType || 'Unknown';
+                    } else if (groupBy === 'source') {
+                      groupKey = config.source || 'Unknown';
+                      // Capitalize first letter for display
+                      groupKey = groupKey.charAt(0).toUpperCase() + groupKey.slice(1);
+                    }
+                    
+                    if (!groups[groupKey]) {
+                      groups[groupKey] = [];
+                    }
+                    
+                    groups[groupKey].push(config);
+                  });
+                  
+                  // Sort group keys alphabetically
+                  const sortedGroupKeys = Object.keys(groups).sort();
+                  
+                  return sortedGroupKeys.map(groupKey => (
+                    <Box key={groupKey} sx={{ mb: 4 }}>
+                      <Paper 
+                        sx={{ 
+                          boxShadow: 'none',
+                          border: '1px solid',
+                          borderColor: 'divider',
+                          p: 2, 
+                          mb: 2, 
+                          bgcolor: theme => theme.palette.background.neutral || '#edf2f7',
+                          borderRadius: 2,
+                          display: 'flex',
+                          alignItems: 'center'
+                        }}
+                      >
+                        <Typography 
+                          variant="h6" 
+                          component="h2"
+                          sx={{ 
+                            fontWeight: 'medium',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 1
+                          }}
+                        >
+                          {groupBy === 'modality' && (
+                            <Box 
+                              component="span" 
+                              sx={{ 
+                                px: 1.5, 
+                                py: 0.5, 
+                                bgcolor: 'secondary.main', 
+                                color: 'secondary.contrastText',
+                                borderRadius: 1,
+                                fontSize: '0.875rem',
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              {groupKey}
+                            </Box>
+                          )}
+                          
+                          {groupBy === 'type' && (
+                            <Box 
+                              component="span" 
+                              sx={{ 
+                                px: 1.5, 
+                                py: 0.5, 
+                                bgcolor: 'primary.main', 
+                                color: 'primary.contrastText',
+                                borderRadius: 1,
+                                fontSize: '0.875rem',
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              {groupKey}
+                            </Box>
+                          )}
+                          
+                          {groupBy === 'source' && (
+                            <Box 
+                              component="span" 
+                              sx={{ 
+                                px: 1.5, 
+                                py: 0.5, 
+                                bgcolor: 'info.main', 
+                                color: 'info.contrastText',
+                                borderRadius: 1,
+                                fontSize: '0.875rem',
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              {groupKey}
+                            </Box>
+                          )}
+                          <Typography variant="body1" component="span" sx={{ ml: 1 }}>
+                            {groups[groupKey].length} {groups[groupKey].length === 1 ? 'Model' : 'Models'}
+                          </Typography>
+                        </Typography>
+                      </Paper>
+                      
+                      <Grid container spacing={3}>
+                        {groups[groupKey].map(config => (
+                          <Grid item xs={12} md={viewMode === 'grid' ? 6 : 12} key={config.id}>
+                            <ModelCard
+                              config={config}
+                              viewMode={viewMode}
+                              onEdit={handleEditConfig}
+                              onDelete={handleDeleteConfig}
+                              onClick={() => handleCardClick(config)}
+                            />
+                          </Grid>
+                        ))}
+                      </Grid>
+                    </Box>
+                  ));
+                })()}
+                
+                {/* Add New Model Card - Always at the bottom when grouped */}
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={viewMode === 'grid' ? 6 : 12}>
+                    <AddModelCard
+                      viewMode={viewMode}
+                      onClick={handleGetStarted}
+                    />
+                  </Grid>
+                </Grid>
+              </Box>
+            )}
+          </>
         )}
       </Box>
 
@@ -309,6 +452,13 @@ const HomePage = () => {
       <Dialog
         open={deleteDialogOpen}
         onClose={() => setDeleteDialogOpen(false)}
+        PaperProps={{
+          sx: {
+            boxShadow: 'none',
+            border: '1px solid',
+            borderColor: 'divider'
+          }
+        }}
       >
         <DialogTitle>Delete Model Configuration</DialogTitle>
         <DialogContent>

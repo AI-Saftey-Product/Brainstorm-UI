@@ -27,15 +27,7 @@ const AppSidebar = ({ open, currentPath, modelConfigured }) => {
   const navigate = useNavigate();
   const { modelType, modelConfig } = useAppContext();
   
-  // Debug log - this helps us see what's happening
-  console.log('Sidebar modelConfigured:', modelConfigured);
-  console.log('Sidebar modelConfig:', modelConfig);
-  
   const handleNavigation = (path) => {
-    console.log('Sidebar: Attempting to navigate to:', path);
-    console.log('Sidebar: Current path is:', currentPath);
-    console.log('Sidebar: modelConfigured:', modelConfigured);
-    
     // Use React Router's navigate function directly
     navigate(path);
   };
@@ -59,7 +51,8 @@ const AppSidebar = ({ open, currentPath, modelConfigured }) => {
           width: drawerWidth,
           boxSizing: 'border-box',
           backgroundColor: '#f8f9fa',
-          borderRight: '1px solid rgba(0, 0, 0, 0.08)',
+          borderRight: '1px solid',
+          borderColor: 'divider',
         },
       }}
     >
@@ -100,6 +93,8 @@ const AppSidebar = ({ open, currentPath, modelConfigured }) => {
               p: 2, 
               backgroundColor: 'rgba(76, 175, 80, 0.1)', 
               borderRadius: 1,
+              border: '1px solid',
+              borderColor: 'success.light',
               borderLeft: '3px solid #4caf50',
             }}>
               <Typography variant="subtitle2" color="success.main">

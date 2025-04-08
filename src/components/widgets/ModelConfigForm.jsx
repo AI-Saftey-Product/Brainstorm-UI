@@ -24,7 +24,17 @@ const MODEL_CATEGORIES = {
 // We're only supporting NLP models currently
 const MODEL_SOURCES = [
   "huggingface",
+  "openai",
   "custom"
+];
+
+// OpenAI model options
+const OPENAI_MODELS = [
+  "gpt-4-turbo",
+  "gpt-4",
+  "gpt-3.5-turbo",
+  "text-davinci-003",
+  "gpt-4-vision-preview"
 ];
 
 const ModelConfigForm = ({ 
@@ -40,6 +50,12 @@ const ModelConfigForm = ({
     api_key: initialValues.api_key || '',
     model_id: initialValues.model_id || initialValues.modelId || '',
     verbose: initialValues.verbose || false,
+    // OpenAI specific parameters
+    temperature: initialValues.temperature || 0.7,
+    max_tokens: initialValues.max_tokens || 1024,
+    frequency_penalty: initialValues.frequency_penalty || 0,
+    presence_penalty: initialValues.presence_penalty || 0,
+    organization_id: initialValues.organization_id || '',
     ...initialValues
   });
 
@@ -63,6 +79,11 @@ const ModelConfigForm = ({
   };
 
   const getRecommendedModelText = (modelType) => {
+    // If OpenAI is selected, show different recommendations
+    if (formValues.source === 'openai') {
+      return " Common OpenAI models: gpt-4, gpt-3.5-turbo";
+    }
+    
     const recommendations = {
       'Text Generation': " Try: gpt2, EleutherAI/gpt-neo-125M, facebook/opt-125m",
       'Text Classification': " Try: distilbert-base-uncased-finetuned-sst-2-english, roberta-base-openai-detector",
@@ -74,8 +95,11 @@ const ModelConfigForm = ({
     return recommendations[modelType] || " Popular options: gpt2, bert-base-uncased, facebook/bart-large-cnn";
   };
 
-  // Show API key field only for HuggingFace models
-  const showApiKey = formValues.source === 'huggingface';
+  // Show API key field for HuggingFace and OpenAI models
+  const showApiKey = formValues.source === 'huggingface' || formValues.source === 'openai';
+  
+  // Show OpenAI specific fields only for OpenAI models
+  const showOpenAIFields = formValues.source === 'openai';
 
   return (
     <Box>
@@ -152,22 +176,101 @@ const ModelConfigForm = ({
               value={formValues.api_key}
               onChange={handleChange('api_key')}
               error={!!errors.api_key}
-              helperText={errors.api_key || "Your HuggingFace API key"}
+              helperText={errors.api_key || `Your ${formValues.source === 'openai' ? 'OpenAI' : 'HuggingFace'} API key`}
               type="password"
             />
           </Grid>
         )}
 
         <Grid item xs={12}>
-          <TextField
-            fullWidth
-            label="Model ID"
-            value={formValues.model_id}
-            onChange={handleChange('model_id')}
-            error={!!errors.model_id}
-            helperText={errors.model_id || (formValues.sub_type && getRecommendedModelText(formValues.sub_type))}
-          />
+          {showOpenAIFields ? (
+            <FormControl fullWidth error={!!errors.model_id}>
+              <InputLabel>Model ID</InputLabel>
+              <Select
+                value={formValues.model_id}
+                label="Model ID"
+                onChange={handleChange('model_id')}
+              >
+                {OPENAI_MODELS.map((model) => (
+                  <MenuItem key={model} value={model}>
+                    {model}
+                  </MenuItem>
+                ))}
+              </Select>
+              {errors.model_id && (
+                <FormHelperText>{errors.model_id}</FormHelperText>
+              )}
+            </FormControl>
+          ) : (
+            <TextField
+              fullWidth
+              label="Model ID"
+              value={formValues.model_id}
+              onChange={handleChange('model_id')}
+              error={!!errors.model_id}
+              helperText={errors.model_id || (formValues.sub_type && getRecommendedModelText(formValues.sub_type))}
+            />
+          )}
         </Grid>
+
+        {/* OpenAI specific parameters */}
+        {showOpenAIFields && (
+          <>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Temperature"
+                type="number"
+                inputProps={{ min: 0, max: 2, step: 0.1 }}
+                value={formValues.temperature}
+                onChange={handleChange('temperature')}
+                helperText="Controls randomness (0.1-2.0)"
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Max Tokens"
+                type="number"
+                inputProps={{ min: 1, max: 4096, step: 1 }}
+                value={formValues.max_tokens}
+                onChange={handleChange('max_tokens')}
+                helperText="Maximum tokens to generate"
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Frequency Penalty"
+                type="number"
+                inputProps={{ min: -2, max: 2, step: 0.1 }}
+                value={formValues.frequency_penalty}
+                onChange={handleChange('frequency_penalty')}
+                helperText="Prevents repetition (-2.0 to 2.0)"
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Presence Penalty"
+                type="number"
+                inputProps={{ min: -2, max: 2, step: 0.1 }}
+                value={formValues.presence_penalty}
+                onChange={handleChange('presence_penalty')}
+                helperText="Controls topic diversity (-2.0 to 2.0)"
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Organization ID (Optional)"
+                value={formValues.organization_id || ''}
+                onChange={handleChange('organization_id')}
+                helperText="Your OpenAI organization ID (if applicable)"
+              />
+            </Grid>
+          </>
+        )}
 
         <Grid item xs={12}>
           <FormControlLabel

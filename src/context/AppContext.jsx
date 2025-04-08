@@ -79,7 +79,7 @@ export const AppProvider = ({ children }) => {
         setComplianceScores(JSON.parse(savedScores));
       }
     } catch (error) {
-      console.error('Error loading state from localStorage:', error);
+      // Error loading from localStorage
     }
   }, []);
 
@@ -89,23 +89,17 @@ export const AppProvider = ({ children }) => {
     if (!modelConfig) return [];
     
     try {
-      console.log('Explicitly fetching tests for model:', modelConfig);
-      
       // Create API-compatible parameters
       const apiParams = {
         modality: modelConfig.modality || modelConfig.modelCategory || 'NLP',
         model_type: modelConfig.sub_type || modelConfig.modelType || ''
       };
       
-      console.log('Sending API params for getFilteredTests:', apiParams);
-      
       // Fetch tests based on model configuration
       const tests = await getFilteredTests(apiParams);
-      console.log('Fetched available tests:', tests);
       setAvailableTests(tests);
       return tests;
     } catch (error) {
-      console.error('Error fetching available tests:', error);
       setAvailableTests([]);
       return [];
     }
@@ -153,14 +147,38 @@ export const AppProvider = ({ children }) => {
     });
   };
 
-  // Save test results
+  /**
+   * Save test results and update the context state
+   * @param {Object} results - Test results to save
+   * @param {Object} scores - Compliance scores to save
+   */
   const saveTestResults = (results, scores) => {
-    setTestResults(results);
-    setComplianceScores(scores);
-    
-    // Save to localStorage
-    localStorage.setItem('testResults', JSON.stringify(results));
-    localStorage.setItem('complianceScores', JSON.stringify(scores));
+    // Validate that results is an object
+    if (!results || typeof results !== 'object') {
+      return false;
+    }
+
+    try {
+      // Save to state
+      setTestResults(results);
+      setComplianceScores(scores || {});
+
+      // Also save to localStorage for persistence
+      try {
+        const resultsToSave = JSON.stringify(results);
+        localStorage.setItem('testResults', resultsToSave);
+        
+        if (scores && Object.keys(scores).length > 0) {
+          const scoresToSave = JSON.stringify(scores);
+          localStorage.setItem('complianceScores', scoresToSave);
+        }
+        return true;
+      } catch (storageError) {
+        return false;
+      }
+    } catch (error) {
+      return false;
+    }
   };
 
   // Reset all data

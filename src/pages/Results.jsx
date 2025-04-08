@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useCallback, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -53,6 +53,8 @@ import ComplianceScoreGauge from '../components/common/ComplianceScoreGauge';
 import TestResultTable from '../components/widgets/TestResultTable';
 import PageLayout from '../components/layout/PageLayout';
 import Section from '../components/layout/Section';
+import testResultsService from '../services/testResultsService';
+import * as testsService from '../services/testsService';
 
 // Color mapping for categories
 const CATEGORY_COLORS = {
@@ -71,7 +73,224 @@ const CATEGORY_COLORS = {
 
 const ResultsPage = () => {
   const navigate = useNavigate();
-  const { testResults, complianceScores, selectedTests } = useAppContext();
+  const location = useLocation();
+  const { testResults, complianceScores, selectedTests, saveTestResults } = useAppContext();
+  
+  // State from location if passed during navigation
+  const locationResults = location.state?.results || {};
+  const locationScores = location.state?.scores || {};
+  
+  // Local state as fallback
+  const [localResults, setLocalResults] = useState({});
+  const [localScores, setLocalScores] = useState({});
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [results, setResults] = useState({});
+  const [scores, setScores] = useState({});
+  const [taskId, setTaskId] = useState('');
+  
+  // Update the useEffect that handles location state
+  useEffect(() => {
+    if (location?.state) {
+      // Extract data from location state
+      const { taskId: locationTaskId, results: locationResults, scores: locationScores } = location.state;
+      
+      if (locationTaskId) {
+        setTaskId(locationTaskId);
+      }
+      
+      // Check if results exist in location state
+      if (locationResults && typeof locationResults === 'object' && Object.keys(locationResults).length > 0) {
+        // Update state with the results from location
+        setResults(locationResults);
+        if (locationScores) setScores(locationScores);
+        
+        // Save to context if not already there
+        if (typeof saveTestResults === 'function') {
+          saveTestResults(locationResults, locationScores || {});
+        }
+      }
+    }
+    
+    // Always check for results in context and update if found
+    if (testResults && Object.keys(testResults).length > 0) {
+      setResults(testResults);
+      if (complianceScores && Object.keys(complianceScores).length > 0) setScores(complianceScores);
+    }
+
+    // Check for taskId in query params
+    const params = new URLSearchParams(location.search);
+    const queryTaskId = params.get('taskId');
+    if (queryTaskId && !location?.state?.taskId) {
+      setTaskId(queryTaskId);
+    }
+  }, [location, testResults, complianceScores, saveTestResults]);
+  
+  // Update the fetchResultsFromAPI function
+  const fetchResultsFromAPI = async (id) => {
+    if (!id) {
+      return;
+    }
+
+    setLoading(true);
+    
+    try {
+      const apiResults = await testsService.getTestResults(id);
+      
+      // Check various locations for the results data
+      let extractedResults = null;
+      let extractedScores = null;
+      
+      // Case 1: API returned an object with test_run property (most common)
+      if (apiResults?.test_run) {
+        // Check for results in test_run.results.test_results (newest format)
+        if (apiResults.test_run.results?.test_results) {
+          extractedResults = apiResults.test_run.results.test_results;
+        }
+        // Check for results in test_run.test_results
+        else if (apiResults.test_run.test_results) {
+          extractedResults = apiResults.test_run.test_results;
+        }
+        // Check for results in test_run.results
+        else if (apiResults.test_run.results) {
+          extractedResults = apiResults.test_run.results;
+        }
+        
+        // Check for scores
+        if (apiResults.test_run.compliance_scores) {
+          extractedScores = apiResults.test_run.compliance_scores;
+        }
+      }
+      // Case 2: API returned results directly
+      else if (apiResults?.results) {
+        // Check for test_results in results
+        if (apiResults.results.test_results) {
+          extractedResults = apiResults.results.test_results;
+        } else {
+          // Results is the results object itself
+          extractedResults = apiResults.results;
+        }
+        
+        // Check for scores
+        if (apiResults.scores) {
+          extractedScores = apiResults.scores;
+        }
+      }
+      // Case 3: API returned the results directly
+      else if (apiResults && typeof apiResults === 'object' && !Array.isArray(apiResults)) {
+        extractedResults = apiResults;
+      }
+      
+      // If we found results, process them
+      if (extractedResults && Object.keys(extractedResults).length > 0) {
+        // Check if we need to convert to expected format
+        const sampleKey = Object.keys(extractedResults)[0];
+        const sampleValue = extractedResults[sampleKey];
+        
+        if (!sampleValue?.test || !sampleValue?.result) {
+          const formattedResults = {};
+          Object.entries(extractedResults).forEach(([key, value]) => {
+            // Skip if not an object or null
+            if (!value || typeof value !== 'object') return;
+            
+            formattedResults[key] = {
+              test: {
+                id: key,
+                name: value.test_name || value.name || key,
+                category: value.category || value.test_category || 'unknown',
+                description: value.description || '',
+                severity: value.severity || 'medium'
+              },
+              result: {
+                pass: value.status === 'success' || value.status === 'passed' || value.pass === true,
+                score: value.score || 0,
+                message: value.message || '',
+                details: value.details || value.analysis || {},
+                timestamp: value.created_at || value.timestamp || new Date().toISOString()
+              }
+            };
+          });
+          
+          if (Object.keys(formattedResults).length > 0) {
+            extractedResults = formattedResults;
+          }
+        }
+        
+        // Update state with the new results
+        setResults(extractedResults);
+        if (extractedScores) setScores(extractedScores);
+        
+        // Save results to context and database
+        if (typeof saveTestResults === 'function') {
+          saveTestResults(extractedResults, extractedScores || {});
+        }
+        
+        if (testResultsService?.saveResults) {
+          testResultsService.saveResults(id, extractedResults, extractedScores || {})
+            .catch(error => {
+              // Error handling without console.error
+            });
+        }
+      }
+    } catch (error) {
+      setError(`Error fetching results: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Update checkOtherDataSources
+  const checkOtherDataSources = () => {
+    // Check localStorage directly
+    try {
+      const storedResults = localStorage.getItem('testResults');
+      const storedScores = localStorage.getItem('complianceScores');
+      
+      // First priority: Check if we already have data from router location state
+      if (location.state && location.state.results && Object.keys(location.state.results).length > 0) {
+        setLocalResults(location.state.results);
+        setLocalScores(location.state.scores || {});
+        
+        // Also save to context if it's empty
+        if ((!testResults || Object.keys(testResults).length === 0) && typeof saveTestResults === 'function') {
+          saveTestResults(location.state.results, location.state.scores || {});
+        }
+      }
+      // Second priority: Check for results in localStorage
+      else if (storedResults) {
+        try {
+          const parsedResults = JSON.parse(storedResults);
+          if (parsedResults && Object.keys(parsedResults).length > 0) {
+            setLocalResults(parsedResults);
+            
+            // Try to get scores too
+            if (storedScores) {
+              try {
+                const parsedScores = JSON.parse(storedScores);
+                setLocalScores(parsedScores);
+              } catch (e) {
+                // Error parsing scores
+              }
+            }
+            
+            // Save to context if not already there
+            if ((!testResults || Object.keys(testResults).length === 0) && typeof saveTestResults === 'function') {
+              try {
+                saveTestResults(parsedResults, storedScores ? JSON.parse(storedScores) : {});
+              } catch (saveError) {
+                // Error saving results to context
+              }
+            }
+          }
+        } catch (parseError) {
+          // Error checking localStorage results
+        }
+      }
+    } catch (error) {
+      // Error checking localStorage
+    }
+  };
   
   const [currentTab, setCurrentTab] = useState(0);
   const [categoryExpanded, setCategoryExpanded] = useState({});
@@ -102,7 +321,8 @@ const ResultsPage = () => {
     criticalOnly: false,
     recentOnly: false
   });
-  
+  const [directFetching, setDirectFetching] = useState(false);
+
   const handleMenuOpen = (event) => {
     setMenuAnchorEl(event.currentTarget);
   };
@@ -159,28 +379,75 @@ const ResultsPage = () => {
   
   // Calculate overall compliance score
   const calculateOverallScore = () => {
-    if (!complianceScores || typeof complianceScores !== 'object') return 0;
+    const scores = effectiveScores || {};
     
-    const scores = Object.values(complianceScores);
-    if (scores.length === 0) return 0;
+    if (!scores || typeof scores !== 'object') {
+      return 0;
+    }
     
-    const totalPassed = scores.reduce((sum, score) => sum + (score?.passed || 0), 0);
-    const totalTests = scores.reduce((sum, score) => sum + (score?.total || 0), 0);
+    // If we don't have explicit scores, try to calculate from results
+    if (Object.keys(scores).length === 0 && effectiveResults) {
+      // Group tests by category
+      const categories = {};
+      Object.values(effectiveResults).forEach(result => {
+        if (result && result.test && result.result) {
+          const category = result.test.category || 'unknown';
+          if (!categories[category]) {
+            categories[category] = { total: 0, passed: 0 };
+          }
+          categories[category].total++;
+          if (result.result.pass) {
+            categories[category].passed++;
+          }
+        }
+      });
+      
+      // Calculate overall score from categories
+      if (Object.keys(categories).length > 0) {
+        const totalPassed = Object.values(categories).reduce((sum, cat) => sum + cat.passed, 0);
+        const totalTests = Object.values(categories).reduce((sum, cat) => sum + cat.total, 0);
+        
+        return totalTests > 0 ? (totalPassed / totalTests) * 100 : 0;
+      }
+    }
+    
+    const scoreValues = Object.values(scores);
+    if (scoreValues.length === 0) {
+      return 0;
+    }
+    
+    const totalPassed = scoreValues.reduce((sum, score) => sum + (score?.passed || 0), 0);
+    const totalTests = scoreValues.reduce((sum, score) => sum + (score?.total || 0), 0);
     
     return totalTests > 0 ? (totalPassed / totalTests) * 100 : 0;
   };
   
-  const overallScore = calculateOverallScore();
+  // Use context data first, then fall back to local state from location or localStorage
+  const effectiveResults = Object.keys(testResults).length > 0 
+    ? testResults 
+    : Object.keys(locationResults).length > 0
+      ? locationResults
+      : localResults;
+      
+  const effectiveScores = Object.keys(complianceScores).length > 0 
+    ? complianceScores 
+    : Object.keys(locationScores).length > 0
+      ? locationScores
+      : localScores;
   
-  // Check if we have results to display
-  const hasResults = testResults && typeof testResults === 'object' && Object.keys(testResults).length > 0;
+  // Check if we have any results to show
+  const hasResults = effectiveResults && Object.keys(effectiveResults).length > 0;
+  
+  const overallScore = calculateOverallScore();
   
   // Statistics
   const getStats = () => {
-    if (!hasResults) return { total: 0, passed: 0, failed: 0 };
+    if (!hasResults) {
+      return { total: 0, passed: 0, failed: 0 };
+    }
     
-    const total = Object.keys(testResults).length;
-    const passed = Object.values(testResults).filter(result => result?.result?.pass).length;
+    const total = Object.keys(effectiveResults).length;
+    const passed = Object.values(effectiveResults).filter(result => result?.result?.pass).length;
     
     return {
       total,
@@ -194,7 +461,7 @@ const ResultsPage = () => {
   // If no tests selected, show warning
   if (!selectedTests || selectedTests.length === 0) {
       return (
-      <PageLayout title="Compliance Results Dashboard">
+      <PageLayout title="Results Dashboard">
         <Alert severity="warning" sx={{ mb: 3 }}>
           No tests have been selected yet. Please configure and run tests to see results.
         </Alert>
@@ -205,6 +472,77 @@ const ResultsPage = () => {
           >
           Go to Test Configuration
           </Button>
+      </PageLayout>
+    );
+  }
+  
+  // If tests were selected but no results available, show a different message
+  if (selectedTests.length > 0 && !hasResults) {
+    return (
+      <PageLayout title="Results Dashboard">
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Tests have been selected but no results are available yet. Run the tests to see results.
+        </Alert>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button 
+            variant="contained" 
+            color="primary"
+            startIcon={<RestartAltIcon />}
+            onClick={() => navigate('/run-tests')}
+          >
+            Run Tests
+          </Button>
+          <Button
+            variant="outlined"
+            onClick={debugState}
+          >
+            Debug State
+          </Button>
+        </Box>
+        
+        {showDebugPanel && (
+          <Paper sx={{ mt: 3, p: 2 }}>
+            <Typography variant="h6" gutterBottom>Debug Information</Typography>
+            
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle1">Location State</Typography>
+              <pre style={{ background: '#f5f5f5', padding: 8, overflowX: 'auto' }}>
+                {JSON.stringify(location.state, null, 2) || 'null'}
+              </pre>
+            </Box>
+            
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle1">Test Results (Context)</Typography>
+              <pre style={{ background: '#f5f5f5', padding: 8, overflowX: 'auto' }}>
+                {JSON.stringify(testResults, null, 2) || 'null'}
+              </pre>
+            </Box>
+            
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle1">Local Results State</Typography>
+              <pre style={{ background: '#f5f5f5', padding: 8, overflowX: 'auto' }}>
+                {JSON.stringify(localResults, null, 2) || 'null'}
+              </pre>
+            </Box>
+            
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle1">Selected Tests</Typography>
+              <pre style={{ background: '#f5f5f5', padding: 8, overflowX: 'auto' }}>
+                {JSON.stringify(selectedTests, null, 2) || 'null'}
+              </pre>
+            </Box>
+            
+            <Box sx={{ mt: 3 }}>
+              <Button 
+                variant="contained"
+                color="warning"
+                onClick={handleDirectFetch}
+              >
+                Direct API Fetch
+              </Button>
+            </Box>
+          </Paper>
+        )}
       </PageLayout>
     );
   }
@@ -247,7 +585,73 @@ const ResultsPage = () => {
   const handleCompareRuns = () => {
     setCompareMode(true);
   };
+  
+  // Add a direct API fetch debug button in the Debug State section
+  const handleDirectFetch = async () => {
+    if (!taskId) {
+      alert('No task ID available to fetch results');
+      return;
+    }
     
+    setDirectFetching(true);
+    console.log(`[DIRECT-FETCH] Attempting direct fetch for task ID: ${taskId}`);
+    
+    try {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/test_runs/${taskId}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('[DIRECT-FETCH] Response:', data);
+      
+      // Process results and update UI
+      if (data && data.test_run) {
+        let directResults = null;
+        let directScores = null;
+        
+        if (data.test_run.results?.test_results) {
+          directResults = data.test_run.results.test_results;
+        } else if (data.test_run.test_results) {
+          directResults = data.test_run.test_results;
+        } else if (data.test_run.results) {
+          directResults = data.test_run.results;
+        }
+        
+        if (data.test_run.compliance_scores) {
+          directScores = data.test_run.compliance_scores;
+        }
+        
+        if (directResults && Object.keys(directResults).length > 0) {
+          // Update state with the direct results
+          setResults(directResults);
+          if (directScores) setScores(directScores);
+          
+          // Save to context and database
+          if (typeof saveTestResults === 'function') {
+            saveTestResults(directResults, directScores || {});
+          }
+          
+          alert(`Successfully fetched ${Object.keys(directResults).length} results directly from API`);
+        } else {
+          alert('No results found in direct API response');
+        }
+      } else {
+        alert('Invalid API response format');
+      }
+    } catch (error) {
+      alert(`Direct fetch error: ${error.message}`);
+    } finally {
+      setDirectFetching(false);
+    }
+  };
+  
     return (
     <PageLayout title="Results Overview" actions={pageActions}>
       {/* Enhanced Search and Filter Bar */}
@@ -311,16 +715,7 @@ const ResultsPage = () => {
       <Box sx={{ mb: 4 }}>
         <Grid container spacing={3}>
           <Grid item xs={12} sm={4}>
-            <Paper elevation={0} sx={{ 
-              p: 3, 
-              border: '1px solid',
-              borderColor: 'divider',
-              height: '100%',
-              transition: 'transform 0.2s ease-in-out',
-              '&:hover': {
-                transform: 'translateY(-2px)'
-              }
-            }}>
+            <Paper sx={{ boxShadow: 'none', border: '1px solid', borderColor: 'divider', p: 3, height: '100%', transition: 'transform 0.2s ease-in-out', '&:hover': { transform: 'translateY(-2px)' } }}>
               <Typography variant="subtitle2" gutterBottom>
                   Total Tests
                 </Typography>
@@ -331,17 +726,7 @@ const ResultsPage = () => {
           </Grid>
           
           <Grid item xs={6} sm={4}>
-            <Paper elevation={0} sx={{ 
-              p: 3,
-              border: '1px solid',
-              borderColor: 'success.light',
-              backgroundColor: 'success.lighter',
-              height: '100%',
-              transition: 'transform 0.2s ease-in-out',
-              '&:hover': {
-                transform: 'translateY(-2px)'
-              }
-            }}>
+            <Paper sx={{ boxShadow: 'none', border: '1px solid', borderColor: 'success.light', backgroundColor: 'success.lighter', p: 3, height: '100%', transition: 'transform 0.2s ease-in-out', '&:hover': { transform: 'translateY(-2px)' } }}>
               <Typography variant="subtitle2" color="success.dark" gutterBottom>
                   Tests Passed
                 </Typography>
@@ -352,17 +737,7 @@ const ResultsPage = () => {
           </Grid>
           
           <Grid item xs={6} sm={4}>
-            <Paper elevation={0} sx={{ 
-              p: 3,
-              border: '1px solid',
-              borderColor: 'error.light',
-              backgroundColor: 'error.lighter',
-              height: '100%',
-              transition: 'transform 0.2s ease-in-out',
-              '&:hover': {
-                transform: 'translateY(-2px)'
-              }
-            }}>
+            <Paper sx={{ boxShadow: 'none', border: '1px solid', borderColor: 'error.light', backgroundColor: 'error.lighter', p: 3, height: '100%', transition: 'transform 0.2s ease-in-out', '&:hover': { transform: 'translateY(-2px)' } }}>
               <Typography variant="subtitle2" color="error.dark" gutterBottom>
                   Tests Failed
                 </Typography>
@@ -399,7 +774,7 @@ const ResultsPage = () => {
           <Grid item xs={12} md={6}>
             <Box sx={{ height: 300 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <RadarChart data={Object.entries(complianceScores).map(([category, scores]) => ({
+                <RadarChart data={Object.entries(effectiveScores).map(([category, scores]) => ({
                   category,
                   score: scores.total > 0 ? (scores.passed / scores.total) * 100 : 0
                 }))}>
@@ -422,23 +797,23 @@ const ResultsPage = () => {
       {/* Compliance by Category with enhanced visuals */}
       <Section title="Compliance by Category">
         <Grid container spacing={3}>
-          {Object.entries(complianceScores).map(([category, scores]) => {
+          {Object.entries(effectiveScores).map(([category, scores]) => {
             const categoryScore = scores.total > 0 ? (scores.passed / scores.total) * 100 : 0;
             
             return (
               <Grid item xs={12} sm={6} md={4} key={category}>
                 <Paper 
-                  elevation={0} 
                   sx={{ 
-                    p: 3,
-                    border: '1px solid',
-                    borderColor: 'divider',
-                    height: '100%',
-                    transition: 'all 0.2s ease-in-out',
-                    '&:hover': {
-                      transform: 'translateY(-4px)',
-                      boxShadow: 2
-                    }
+                    boxShadow: 'none', 
+                    border: '1px solid', 
+                    borderColor: 'divider', 
+                    p: 3, 
+                    height: '100%', 
+                    transition: 'all 0.2s ease-in-out', 
+                    '&:hover': { 
+                      transform: 'translateY(-4px)', 
+                      boxShadow: 2 
+                    } 
                   }}
                 >
                   <Box sx={{ 
@@ -533,7 +908,7 @@ const ResultsPage = () => {
       >
         <Box sx={{ height: 300, mb: 4 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={Object.values(testResults).map(result => ({
+            <LineChart data={Object.values(effectiveResults).map(result => ({
               date: new Date(result.timestamp).toLocaleDateString(),
               score: result.overallScore,
               ...Object.fromEntries(
@@ -555,7 +930,7 @@ const ResultsPage = () => {
                 stroke="#8884d8"
                 strokeWidth={2}
               />
-              {Object.keys(complianceScores).map((category, index) => (
+              {Object.keys(effectiveScores).map((category, index) => (
                 <Line
                   key={category}
                   type="monotone"
@@ -570,7 +945,7 @@ const ResultsPage = () => {
         </Box>
         
         <TestResultTable 
-          results={testResults}
+          results={effectiveResults}
           filters={{
             category: filterCategory,
             status: filterStatus,
@@ -590,6 +965,13 @@ const ResultsPage = () => {
         onClose={() => setCompareMode(false)}
         maxWidth="md"
         fullWidth
+        PaperProps={{
+          sx: {
+            boxShadow: 'none',
+            border: '1px solid',
+            borderColor: 'divider'
+          }
+        }}
       >
         <DialogTitle>Compare Test Runs</DialogTitle>
         <DialogContent>
@@ -601,7 +983,7 @@ const ResultsPage = () => {
                   value={selectedRun || ''}
                   onChange={(e) => setSelectedRun(e.target.value)}
                 >
-                  {Object.values(testResults).map(result => (
+                  {Object.values(effectiveResults).map(result => (
                     <MenuItem key={result.id} value={result.id}>
                       {new Date(result.timestamp).toLocaleString()}
                     </MenuItem>
@@ -616,7 +998,7 @@ const ResultsPage = () => {
                   value={selectedRunToCompare || ''}
                   onChange={(e) => setSelectedRunToCompare(e.target.value)}
                 >
-                  {Object.values(testResults).map(result => (
+                  {Object.values(effectiveResults).map(result => (
                     <MenuItem key={result.id} value={result.id}>
                       {new Date(result.timestamp).toLocaleString()}
                     </MenuItem>
@@ -645,9 +1027,16 @@ const ResultsPage = () => {
         {/* Export Dialog */}
         <Dialog
           open={exportDialogOpen}
-        onClose={closeExportDialog}
+          onClose={closeExportDialog}
           maxWidth="sm"
           fullWidth
+          PaperProps={{
+            sx: {
+              boxShadow: 'none',
+              border: '1px solid',
+              borderColor: 'divider'
+            }
+          }}
         >
           <DialogTitle>
           <Typography variant="h6">

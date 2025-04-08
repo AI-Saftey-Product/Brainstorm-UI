@@ -1,179 +1,201 @@
 /**
- * Model Adapter Service
- * Provides adapters for different model types to standardize interaction
+ * Model Adapter
+ * Provides a consistent interface for working with different model types
  */
 
-import { getHuggingFaceModel } from './huggingFaceService';
+import * as huggingFaceService from './huggingFaceService';
+import * as openaiService from './openaiService';
 
 /**
- * Creates an appropriate model adapter based on the model configuration
- * @param {Object} modelConfig - Configuration for the model
- * @returns {Object} - Model adapter with standardized interface
+ * Abstract model adapter class
  */
-export const createModelAdapter = async (modelConfig) => {
-  // Log the incoming model config for debugging
-  console.log('Creating model adapter with config:', modelConfig);
-  
-  // Validate required fields for the API
-  if (!modelConfig.name) {
-    throw new Error('Model name is required');
+class ModelAdapter {
+  constructor(modelConfig) {
+    this.modelConfig = modelConfig;
+    this.model = null;
+    this.modelId = modelConfig?.model_id || modelConfig?.modelId || modelConfig?.selectedModel;
+    this.modelName = modelConfig?.name || modelConfig?.modelName;
+    this.initialized = false;
   }
-  
-  if (!modelConfig.modality) {
-    throw new Error('Model modality is required');
-  }
-  
-  if (!modelConfig.sub_type) {
-    throw new Error('Model sub_type is required');
-  }
-  
-  if (!modelConfig.source) {
-    throw new Error('Model source is required');
-  }
-  
-  if (!modelConfig.model_id) {
-    throw new Error('Model ID is required');
-  }
-  
-  // Create the appropriate adapter based on source
-  switch (modelConfig.source.toLowerCase()) {
-    case 'huggingface':
-      return await createHuggingFaceAdapter(modelConfig);
-    case 'custom':
-      return await createCustomAdapter(modelConfig);
-    default:
-      throw new Error(`Unsupported model source: ${modelConfig.source}`);
-  }
-};
 
-/**
- * Creates an adapter for Hugging Face models
- * @param {Object} modelConfig - Configuration for the Hugging Face model
- * @returns {Object} - Model adapter with standardized interface
- */
-const createHuggingFaceAdapter = async (modelConfig) => {
-  try {
-    // Validate HuggingFace specific required fields
-    if (!modelConfig.api_key) {
-      throw new Error('API key is required for HuggingFace models');
-    }
+  /**
+   * Initialize the model connection
+   * @returns {Promise<boolean>} Whether initialization was successful
+   */
+  async initialize() {
+    throw new Error('initialize() must be implemented by subclass');
+  }
 
-    // Check for valid model ID
-    const modelId = modelConfig.model_id;
-    if (!modelId || modelId === 'None' || modelId === 'undefined') {
-      throw new Error('Missing or invalid Hugging Face model ID');
-    }
+  /**
+   * Generate text from the model
+   * @param {string} prompt - The prompt to send to the model
+   * @param {Object} options - Additional options for the model
+   * @returns {Promise<string>} The generated text
+   */
+  async generate(prompt, options = {}) {
+    throw new Error('generate() must be implemented by subclass');
+  }
 
-    // Initialize the Hugging Face model
-    console.log(`Initializing Hugging Face model with ID: ${modelId}`);
-    const model = await getHuggingFaceModel(modelId, modelConfig.api_key);
-    
-    // Test the model with a simple query
-    try {
-      await model.query("Test query to verify model initialization");
-      console.log("Model initialization successful");
-    } catch (error) {
-      console.error("Model initialization test failed:", error);
-      throw new Error(`Model initialization failed: ${error.message}`);
-    }
-    
+  /**
+   * Get model info
+   * @returns {Object} Model information
+   */
+  getModelInfo() {
     return {
-      name: modelConfig.name,
-      modality: modelConfig.modality,
-      sub_type: modelConfig.sub_type,
-      source: 'huggingface',
-      model_id: modelId,
-      api_key: modelConfig.api_key,
-      
-      /**
-       * Get a prediction from the Hugging Face model
-       * @param {string} input - The input text to predict on
-       * @returns {Promise<Object>} - The prediction result
-       */
-      getPrediction: async (input) => {
-        try {
-          if (!input || typeof input !== 'string') {
-            throw new Error('Invalid input: Input must be a non-empty string');
-          }
-
-          const result = await model.query(input);
-          const prediction = typeof result === 'string' ? result : 
-                           Array.isArray(result) ? result[0]?.generated_text || result[0] : 
-                           result.generated_text || result.text || JSON.stringify(result);
-          
-          return {
-            prediction,
-            text: prediction,
-            confidence: extractConfidence(result),
-            raw: result
-          };
-        } catch (error) {
-          console.error('Error getting prediction from Hugging Face model:', error);
-          throw new Error(`Prediction failed: ${error.message}`);
-        }
-      },
-      
-      /**
-       * Get model information
-       * @returns {Object} - Information about the model
-       */
-      getModelInfo: () => {
-        return {
-          name: modelConfig.name,
-          modality: modelConfig.modality,
-          sub_type: modelConfig.sub_type,
-          source: 'huggingface',
-          model_id: modelId
-        };
-      }
+      id: this.modelId,
+      name: this.modelName,
+      initialized: this.initialized,
+      source: this.modelConfig?.source || 'unknown',
+      type: this.modelConfig?.sub_type || this.modelConfig?.modelType || 'unknown',
+      modality: this.modelConfig?.modality || this.modelConfig?.modelCategory || 'unknown'
     };
+  }
+}
+
+/**
+ * Hugging Face model adapter
+ */
+class HuggingFaceAdapter extends ModelAdapter {
+  constructor(modelConfig) {
+    super(modelConfig);
+    this.apiKey = modelConfig?.api_key || modelConfig?.apiKey;
+  }
+
+  /**
+   * Initialize the Hugging Face model
+   * @returns {Promise<boolean>} Whether initialization was successful
+   */
+  async initialize() {
+    try {
+      const initResult = await huggingFaceService.initializeModel(
+        this.modelId,
+        this.apiKey,
+        this.modelConfig?.parameters || {}
+      );
+      
+      this.initialized = initResult.success;
+      return this.initialized;
+    } catch (error) {
+      this.initialized = false;
+      return false;
+    }
+  }
+
+  /**
+   * Generate text using the Hugging Face model
+   * @param {string} prompt - The prompt to send to the model
+   * @param {Object} options - Additional options for the model
+   * @returns {Promise<string>} The generated text
+   */
+  async generate(prompt, options = {}) {
+    try {
+      if (!this.initialized) {
+        await this.initialize();
+      }
+      
+      const result = await huggingFaceService.getPrediction(
+        this.modelId,
+        prompt,
+        {
+          ...this.modelConfig?.parameters,
+          ...options
+        },
+        this.apiKey
+      );
+      
+      return result;
+    } catch (error) {
+      return `Error: ${error.message || 'Failed to generate text'}`;
+    }
+  }
+}
+
+/**
+ * OpenAI model adapter
+ */
+class OpenAIAdapter extends ModelAdapter {
+  constructor(modelConfig) {
+    super(modelConfig);
+    this.apiKey = modelConfig?.api_key || modelConfig?.apiKey;
+    this.organizationId = modelConfig?.organization_id;
+    this.temperature = modelConfig?.temperature !== undefined ? modelConfig.temperature : 0.7;
+    this.maxTokens = modelConfig?.max_tokens || 1024;
+  }
+
+  /**
+   * Initialize the OpenAI model
+   * @returns {Promise<boolean>} Whether initialization was successful
+   */
+  async initialize() {
+    try {
+      const initResult = await openaiService.initializeModel(
+        this.modelId,
+        this.apiKey,
+        {
+          organization_id: this.organizationId,
+          temperature: this.temperature,
+          max_tokens: this.maxTokens,
+          ...this.modelConfig?.parameters
+        }
+      );
+      
+      this.initialized = initResult.success;
+      return this.initialized;
+    } catch (error) {
+      this.initialized = false;
+      return false;
+    }
+  }
+
+  /**
+   * Generate text using the OpenAI model
+   * @param {string} prompt - The prompt to send to the model
+   * @param {Object} options - Additional options for the model
+   * @returns {Promise<string>} The generated text
+   */
+  async generate(prompt, options = {}) {
+    try {
+      if (!this.initialized) {
+        await this.initialize();
+      }
+      
+      const result = await openaiService.getPrediction(
+        this.modelId,
+        prompt,
+        {
+          temperature: this.temperature,
+          max_tokens: this.maxTokens,
+          ...this.modelConfig?.parameters,
+          ...options
+        },
+        this.apiKey,
+        this.organizationId
+      );
+      
+      return result;
+    } catch (error) {
+      return `Error: ${error.message || 'Failed to generate text'}`;
+    }
+  }
+}
+
+/**
+ * Create a model adapter for the given model configuration
+ * @param {Object} modelConfig - Model configuration
+ * @returns {ModelAdapter} Model adapter instance
+ */
+export const createModelAdapter = (modelConfig) => {
+  try {
+    const source = modelConfig?.source?.toLowerCase() || 'huggingface';
+    
+    if (source === 'openai') {
+      return new OpenAIAdapter(modelConfig);
+    } else {
+      // Default to Hugging Face adapter
+      return new HuggingFaceAdapter(modelConfig);
+    }
   } catch (error) {
-    console.error('Error creating Hugging Face adapter:', error);
-    throw error;
+    // Return a basic adapter that will report the error when used
+    return new ModelAdapter(modelConfig);
   }
-};
-
-/**
- * Creates an adapter for custom models
- * @param {Object} modelConfig - Configuration for the custom model
- * @returns {Object} - Model adapter with standardized interface
- */
-const createCustomAdapter = async (modelConfig) => {
-  // This is a placeholder for custom model integration
-  return {
-    name: modelConfig.name,
-    modality: modelConfig.modality,
-    sub_type: modelConfig.sub_type,
-    source: 'custom',
-    model_id: modelConfig.model_id,
-    
-    getPrediction: async (input) => {
-      throw new Error('Custom model integration is not yet implemented');
-    },
-    
-    getModelInfo: () => {
-      return {
-        name: modelConfig.name,
-        modality: modelConfig.modality,
-        sub_type: modelConfig.sub_type,
-        source: 'custom',
-        model_id: modelConfig.model_id
-      };
-    }
-  };
-};
-
-/**
- * Extract confidence score from model response
- * @param {Object} result - Raw model response
- * @returns {number} - Confidence score between 0 and 1
- */
-const extractConfidence = (result) => {
-  if (typeof result === 'object') {
-    if (Array.isArray(result)) {
-      return result[0]?.score || 0.5;
-    }
-    return result.score || 0.5;
-  }
-  return 0.5;
 }; 
