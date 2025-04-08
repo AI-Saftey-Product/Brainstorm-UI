@@ -12,7 +12,7 @@ import PushPinIcon from '@mui/icons-material/PushPin';
 import SearchIcon from '@mui/icons-material/Search';
 
 // Component for Real-Time Test Details with enhanced UI
-const TestDetailsPanel = ({ testDetails, runningTests }) => {
+const TestDetailsPanel = ({ testDetails, runningTests, selectedTestId }) => {
   const [activeTab, setActiveTab] = useState('all');
   const [filter, setFilter] = useState('');
   const [expandedItems, setExpandedItems] = useState({});
@@ -49,6 +49,11 @@ const TestDetailsPanel = ({ testDetails, runningTests }) => {
     
     return true;
   });
+  
+  // Add an additional filter for the selected test ID
+  const displayedDetails = selectedTestId 
+    ? filteredDetails.filter(item => item.testId === selectedTestId)
+    : filteredDetails;
   
   // Handle copying to clipboard
   const handleCopy = (text) => {
@@ -109,12 +114,36 @@ const TestDetailsPanel = ({ testDetails, runningTests }) => {
   
   const stats = calculateStats();
   
+  // Add this to get the selected test information
+  const selectedTestInfo = selectedTestId 
+    ? {
+        name: displayedDetails.length > 0 
+          ? displayedDetails[0].testId 
+          : selectedTestId,
+        count: displayedDetails.length
+      }
+    : null;
+  
   return (
     <Paper sx={{ p: 3, mb: 3, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h6">Real-Time Test Details</Typography>
+        <Typography variant="h6">
+          {selectedTestInfo 
+            ? `Test Details: ${selectedTestInfo.name} (${selectedTestInfo.count} messages)`
+            : 'Real-Time Test Details'}
+        </Typography>
         
         <Box sx={{ display: 'flex', gap: 1 }}>
+          {selectedTestInfo && (
+            <Button 
+              size="small" 
+              variant="outlined" 
+              onClick={() => window.dispatchEvent(new CustomEvent('clearSelectedTest'))}
+            >
+              Show All Tests
+            </Button>
+          )}
+          
           <ToggleButtonGroup
             size="small"
             value={view}
@@ -237,7 +266,7 @@ const TestDetailsPanel = ({ testDetails, runningTests }) => {
       
       {/* Test details display */}
       <Box sx={{ maxHeight: '500px', overflowY: 'auto', mt: 2 }}>
-        {filteredDetails.length === 0 ? (
+        {displayedDetails.length === 0 ? (
           <Typography variant="body2" color="text.secondary">
             {runningTests ? "Waiting for test details..." : 
               filter ? "No matching test details found." : 
@@ -245,7 +274,7 @@ const TestDetailsPanel = ({ testDetails, runningTests }) => {
           </Typography>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {filteredDetails.map((item, index) => {
+            {displayedDetails.map((item, index) => {
               const isExpanded = expandedItems[index] !== false; // Default to expanded
               const itemId = `${item.testId}-${item.type}-${index}`;
               const isJailbreak = item.type === 'evaluation' && (item.content.strong_reject_score >= 1);

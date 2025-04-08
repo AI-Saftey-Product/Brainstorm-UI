@@ -41,6 +41,7 @@ import CategoryChip from '../components/common/CategoryChip.jsx';
 import ComplianceScoreGauge from '../components/common/ComplianceScoreGauge';
 import ProgressBar from '../components/common/ProgressBar';
 import TestDetailsPanel from '../components/tests/TestDetailsPanel';
+import TestSidebar from '../components/tests/TestSidebar';
 import { runTests, getFilteredTests } from '../services/testsService';
 import { createModelAdapter } from '../services/modelAdapter';
 import { getSavedModelConfigs, getModelConfigById, saveModelTestResults } from '../services/modelStorageService';
@@ -118,6 +119,12 @@ const RunTestsPage = () => {
   
   // Add new state for real-time test details
   const [testDetails, setTestDetails] = useState([]);
+  
+  // Add new state for error severity
+  const [errorSeverity, setErrorSeverity] = useState('error');
+  
+  // Add new state for selected test
+  const [selectedTestId, setSelectedTestId] = useState(null);
   
   // Initialize test selection when component mounts
   useEffect(() => {
@@ -320,9 +327,11 @@ const RunTestsPage = () => {
           }
         } catch (adapterError) {
           setError(`Failed to initialize model adapter: ${adapterError.message}`);
+          setErrorSeverity('error');
         }
       } catch (error) {
         setError(`Failed to load model configuration: ${error.message}`);
+        setErrorSeverity('error');
       } finally {
         setLoading(false);
       }
@@ -334,11 +343,13 @@ const RunTestsPage = () => {
   };
   
   const handleRunTests = async () => {
-    // Reset test details when starting new tests
+    // Reset test details and selected test when starting new tests
     setTestDetails([]);
+    setSelectedTestId(null);
     
     if (!modelAdapter) {
       setError('No model adapter available. Please select a model configuration.');
+      setErrorSeverity('error');
       return;
     }
     
@@ -362,6 +373,7 @@ const RunTestsPage = () => {
     try {
       setRunningTests(true);
       setError(null);
+      setErrorSeverity('error'); // Reset error severity
       setTestResults([]);
       setComplianceScores({});
       setTestProgress(0);
@@ -609,11 +621,15 @@ const RunTestsPage = () => {
                   scores: scoresForNavigation
                 };
                 
-                // Navigate to Results page with the data
+                // Just set runningTests to false, but don't navigate away
                 setRunningTests(false);
-                navigate('/results', { state: navigationState });
+                // Display a success message in the UI
+                setError(`Tests completed successfully!`);
+                setErrorSeverity('success');
+                setCurrentTask(taskId);
               } else {
                 setError('No test results were found in the response. Please try again.');
+                setErrorSeverity('error');
                 setRunningTests(false);
               }
               break;
@@ -621,6 +637,7 @@ const RunTestsPage = () => {
             case 'test_failed':
               // Handle test failure
               setError(`Test failed: ${data.message || 'Unknown error'}`);
+              setErrorSeverity('error');
               setRunningTests(false);
               break;
               
@@ -727,11 +744,13 @@ const RunTestsPage = () => {
       } catch (error) {
         // Handle errors in test initialization
         setError(`Error running tests: ${error.message}`);
+        setErrorSeverity('error');
         addLog(`Error: ${error.message}`);
       }
     } catch (error) {
       // Handle errors in test initialization
       setError(`Error running tests: ${error.message}`);
+      setErrorSeverity('error');
       addLog(`Error: ${error.message}`);
     } finally {
       setRunningTests(false);
@@ -746,7 +765,13 @@ const RunTestsPage = () => {
   };
   
   const handleViewResults = () => {
-    navigate('/results');
+    navigate('/results', { 
+      state: { 
+        taskId: currentTask,
+        results: testResultsDataSource.results,
+        scores: testResultsDataSource.scores
+      }
+    });
   };
   
   const formatMetricValue = (value) => {
@@ -921,6 +946,7 @@ const RunTestsPage = () => {
   const handleStartTests = () => {
     if (!selectedModelId) {
       setError('Please select a model configuration first');
+      setErrorSeverity('error');
       return;
     }
     navigate('/test-config');
@@ -1083,6 +1109,23 @@ const RunTestsPage = () => {
     // Test results and completion state are tracked in state
   }, [testResults, testComplete]);
   
+  // Add handler for selecting a test
+  const handleSelectTest = (testId) => {
+    setSelectedTestId(testId === selectedTestId ? null : testId);
+  };
+  
+  // Listen for the custom event to clear selected test
+  useEffect(() => {
+    const handleClearSelectedTest = () => {
+      setSelectedTestId(null);
+    };
+    
+    window.addEventListener('clearSelectedTest', handleClearSelectedTest);
+    return () => {
+      window.removeEventListener('clearSelectedTest', handleClearSelectedTest);
+    };
+  }, []);
+  
   return (
     <Container maxWidth="lg">
       <Box sx={{ mt: 4, mb: 6 }}>
@@ -1128,7 +1171,21 @@ const RunTestsPage = () => {
               </FormControl>
               
               {error && (
-                <Alert severity="error" sx={{ mb: 3 }}>
+                <Alert 
+                  severity={errorSeverity} 
+                  sx={{ mb: 3 }}
+                  action={
+                    errorSeverity === 'success' && (
+                      <Button 
+                        color="inherit" 
+                        size="small"
+                        onClick={handleViewResults}
+                      >
+                        View Full Results
+                      </Button>
+                    )
+                  }
+                >
                   {error}
                 </Alert>
               )}
@@ -1265,8 +1322,28 @@ const RunTestsPage = () => {
         </>
       ) : null}
       
-      {/* Use our new enhanced TestDetailsPanel component */}
-      <TestDetailsPanel testDetails={testDetails} runningTests={runningTests} />
+      {/* Replace the TestDetailsPanel with the split view */}
+      <Grid container spacing={3}>
+        <Grid item xs={12} md={4} lg={3}>
+          <TestSidebar
+            selectedTests={selectedTests}
+            testResults={testResults}
+            availableTests={availableTests}
+            testDetails={testDetails}
+            runningTests={runningTests}
+            currentTestName={currentTestName}
+            onSelectTest={handleSelectTest}
+            selectedTestId={selectedTestId}
+          />
+        </Grid>
+        <Grid item xs={12} md={8} lg={9}>
+          <TestDetailsPanel 
+            testDetails={testDetails} 
+            runningTests={runningTests} 
+            selectedTestId={selectedTestId}
+          />
+        </Grid>
+      </Grid>
     </Container>
   );
 };
