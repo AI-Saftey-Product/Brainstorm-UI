@@ -40,6 +40,7 @@ import SeverityChip from '../components/common/SeverityChip';
 import CategoryChip from '../components/common/CategoryChip.jsx';
 import ComplianceScoreGauge from '../components/common/ComplianceScoreGauge';
 import ProgressBar from '../components/common/ProgressBar';
+import TestDetailsPanel from '../components/tests/TestDetailsPanel';
 import { runTests, getFilteredTests } from '../services/testsService';
 import { createModelAdapter } from '../services/modelAdapter';
 import { getSavedModelConfigs, getModelConfigById, saveModelTestResults } from '../services/modelStorageService';
@@ -1264,82 +1265,8 @@ const RunTestsPage = () => {
         </>
       ) : null}
       
-      {/* Add the Real-Time Test Details section after the test summary section - always visible */}
-      <Paper sx={{ p: 3, mb: 3, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
-        <Typography variant="h6" gutterBottom>
-          Real-Time Test Details
-        </Typography>
-        
-        <Box sx={{ maxHeight: '400px', overflowY: 'auto', mt: 2 }}>
-          {testDetails.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">
-              {runningTests ? "Waiting for test details..." : "No test details available. Run tests to see real-time results here."}
-            </Typography>
-          ) : (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {testDetails.map((item, index) => (
-                <Paper key={index} variant="outlined" sx={{ p: 2 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                    <Typography variant="subtitle2" color="primary">
-                      {item.type === 'input' ? 'Model Input' : 
-                       item.type === 'output' ? 'Model Output' : 
-                       item.type === 'evaluation' ? 'Evaluation' : 'Event'}
-                      {item.type === 'input' && ` (${item.promptType})`}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {new Date(item.timestamp).toLocaleTimeString()}
-                    </Typography>
-                  </Box>
-                  
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    Test ID: {item.testId}
-                  </Typography>
-                  
-                  <Box sx={{ mt: 1, p: 1, bgcolor: 'background.default', borderRadius: 1 }}>
-                    {item.type === 'input' || item.type === 'output' ? (
-                      <Typography component="pre" variant="body2" sx={{ 
-                        whiteSpace: 'pre-wrap', 
-                        fontFamily: 'monospace', 
-                        fontSize: '0.8rem',
-                        maxHeight: '200px',
-                        overflowY: 'auto'
-                      }}>
-                        {item.content}
-                      </Typography>
-                    ) : item.type === 'evaluation' ? (
-                      <>
-                        <Typography variant="subtitle2">Scores:</Typography>
-                        {item.content.scores && Object.entries(item.content.scores).map(([key, value]) => (
-                          <Typography key={key} variant="body2">
-                            {key}: {value}
-                          </Typography>
-                        ))}
-                        {item.content.strong_reject_score !== undefined && (
-                          <Typography variant="body2">
-                            StrongREJECT Score: {item.content.strong_reject_score}
-                          </Typography>
-                        )}
-                        {item.content.explanation && (
-                          <>
-                            <Typography variant="subtitle2" sx={{ mt: 1 }}>Explanation:</Typography>
-                            <Typography variant="body2">
-                              {item.content.explanation}
-                            </Typography>
-                          </>
-                        )}
-                      </>
-                    ) : (
-                      <Typography variant="body2">
-                        {JSON.stringify(item.content, null, 2)}
-                      </Typography>
-                    )}
-                  </Box>
-                </Paper>
-              ))}
-            </Box>
-          )}
-        </Box>
-      </Paper>
+      {/* Use our new enhanced TestDetailsPanel component */}
+      <TestDetailsPanel testDetails={testDetails} runningTests={runningTests} />
     </Container>
   );
 };
