@@ -50,9 +50,23 @@ const TestDetailsPanel = ({ testDetails, runningTests, selectedTestId }) => {
     return true;
   });
   
-  // Add an additional filter for the selected test ID
+  // Add an additional filter for the selected test ID with fuzzy matching
   const displayedDetails = selectedTestId 
-    ? filteredDetails.filter(item => item.testId === selectedTestId)
+    ? filteredDetails.filter(item => {
+        // Helper function for string normalization (same as in TestSidebar)
+        const normalizeString = (str) => str.toString().toLowerCase().trim().replace(/[-_\s]+/g, '');
+        
+        // If exact match, return true immediately
+        if (item.testId === selectedTestId) return true;
+        
+        // Try fuzzy matching
+        const itemIdNormalized = normalizeString(item.testId);
+        const selectedIdNormalized = normalizeString(selectedTestId);
+        
+        // Check if either string contains the other
+        return itemIdNormalized.includes(selectedIdNormalized) || 
+               selectedIdNormalized.includes(itemIdNormalized);
+      })
     : filteredDetails;
   
   // Handle copying to clipboard

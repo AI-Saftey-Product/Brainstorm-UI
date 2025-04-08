@@ -419,15 +419,39 @@ const RunTestsPage = () => {
           // Get the message type, defaulting to 'unknown' if not present
           const msgType = data.type || 'unknown';
           
+          // Helper function to normalize test IDs for consistency
+          const normalizeTestId = (testId) => {
+            if (!testId) return testId;
+            
+            // Find the matching test from selectedTests if possible
+            const originalTestId = selectedTests.find(id => {
+              const idNorm = id.toLowerCase().replace(/[-_\s]+/g, '');
+              const testIdNorm = testId.toLowerCase().replace(/[-_\s]+/g, '');
+              return idNorm.includes(testIdNorm) || testIdNorm.includes(idNorm);
+            });
+            
+            // Return the original test ID from selectedTests if found, otherwise the input test ID
+            return originalTestId || testId;
+          };
+          
           // Use switch statement to handle message types
           switch(msgType) {
             case 'test_status_update':
               // Handle test status updates
               const { progress, current_test, test_stats } = data;
+              
+              // Add debug logs before any conditional checks
+              console.log("===== TEST STATUS UPDATE MESSAGE RECEIVED =====");
+              console.log("Data received:", data);
+              console.log("Current runningTests state:", runningTests);
+              console.log("Current selectedTests:", selectedTests);
+              
               if (progress) {
                 setTestProgress(progress);
               }
               if (current_test) {
+                console.log("TEST STATUS UPDATE - received current_test:", current_test);
+                console.log("TEST STATUS UPDATE - test IDs to compare:", selectedTests);
                 setCurrentTestName(current_test);
               }
               if (test_stats) {
@@ -435,13 +459,37 @@ const RunTestsPage = () => {
               }
               break;
               
+            case 'test_progress':
+              // Handle test progress updates
+              console.log("===== TEST PROGRESS MESSAGE RECEIVED =====");
+              console.log("Data received:", data);
+              
+              // Extract the test ID and status, normalizing the test ID
+              const progressTestId = normalizeTestId(data.test_id);
+              const progressStatus = data.status;
+              
+              if (progressTestId && progressStatus === 'running') {
+                // Update current test name to reflect what's running
+                setCurrentTestName(progressTestId);
+                console.log("TEST PROGRESS - set current test to:", progressTestId);
+              }
+              
+              // Update progress if available
+              if (data.current && data.total && data.total > 0) {
+                const calculatedProgress = data.current / data.total;
+                setTestProgress(calculatedProgress);
+                console.log("TEST PROGRESS - updated progress:", calculatedProgress);
+              }
+              break;
+              
             case 'test_result':
               // Handle individual test results
-              const { test_id, test_name, status, score } = data;
+              const resultTestId = normalizeTestId(data.test_id);
+              const { test_name, status, score } = data;
               addLog(`Test completed: ${test_name} - ${status} (Score: ${score})`);
               
               // Validate the test result data
-              if (!test_id || !test_name) {
+              if (!resultTestId || !test_name) {
                 return;
               }
               
@@ -451,7 +499,7 @@ const RunTestsPage = () => {
                 const newResults = Array.isArray(prevResults) ? [...prevResults] : [];
                 
                 // Check if this test is already in the results
-                const testIndex = newResults.findIndex(r => r.test_id === test_id);
+                const testIndex = newResults.findIndex(r => r.test_id === resultTestId);
                 
                 // Update or add the test result
                 if (testIndex !== -1) {
@@ -466,7 +514,7 @@ const RunTestsPage = () => {
                 } else {
                   // Add new test result
                   newResults.push({
-                    test_id,
+                    test_id: resultTestId,
                     test_name,
                     status,
                     score,
@@ -653,11 +701,14 @@ const RunTestsPage = () => {
               
             // Add handlers for the test detail messages
             case 'model_input':
-              addLog(`Model Input (${data.test_id}): ${data.prompt_type} prompt received`);
+              // Normalize the test ID for consistency
+              const inputTestId = normalizeTestId(data.test_id);
+              
+              addLog(`Model Input (${inputTestId}): ${data.prompt_type} prompt received`);
               // Add to test details
               setTestDetails(prev => [...prev, {
                 type: 'input',
-                testId: data.test_id,
+                testId: inputTestId,
                 content: data.prompt,
                 promptType: data.prompt_type,
                 timestamp: data.timestamp || new Date().toISOString()
@@ -665,22 +716,28 @@ const RunTestsPage = () => {
               break;
               
             case 'model_output':
-              addLog(`Model Output (${data.test_id}): response received`);
+              // Normalize the test ID for consistency
+              const outputTestId = normalizeTestId(data.test_id);
+              
+              addLog(`Model Output (${outputTestId}): response received`);
               // Add to test details
               setTestDetails(prev => [...prev, {
                 type: 'output',
-                testId: data.test_id,
+                testId: outputTestId,
                 content: data.output,
                 timestamp: data.timestamp || new Date().toISOString()
               }]);
               break;
               
             case 'evaluation_result':
-              addLog(`Evaluation (${data.test_id}): score ${data.evaluation.strong_reject_score || 'N/A'}`);
+              // Normalize the test ID for consistency
+              const evalTestId = normalizeTestId(data.test_id);
+              
+              addLog(`Evaluation (${evalTestId}): score ${data.evaluation.strong_reject_score || 'N/A'}`);
               // Add to test details
               setTestDetails(prev => [...prev, {
                 type: 'evaluation',
-                testId: data.test_id,
+                testId: evalTestId,
                 content: data.evaluation,
                 timestamp: data.timestamp || new Date().toISOString()
               }]);
@@ -696,6 +753,7 @@ const RunTestsPage = () => {
         // Use persistentOn instead of on to keep handlers across resets/reconnections
         websocketService.persistentOn('message', processMessage);
         websocketService.persistentOn('test_status_update', processMessage);
+        websocketService.persistentOn('test_progress', processMessage);
         websocketService.persistentOn('test_result', processMessage);
         websocketService.persistentOn('test_complete', processMessage);
         websocketService.persistentOn('test_failed', processMessage);

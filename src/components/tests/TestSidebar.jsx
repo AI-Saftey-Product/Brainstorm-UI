@@ -45,22 +45,91 @@ const TestSidebar = ({
   selectedTestId 
 }) => {
   
-  // Combine test information from available tests and results
+  const handleSelectTest = (testId) => {
+    console.log("Test selected:", testId);
+    onSelectTest(testId);
+  };
+  
+  // Get test information from available tests and results
   const getTestInfo = (testId) => {
+    console.log("getTestInfo called for testId:", testId);
+    
     // Get test details from available tests
     const availableTest = availableTests?.find(test => test.id === testId);
     
     // Get test results if available
     const testResult = testResults?.find(result => result.test_id === testId);
     
-    // Get whether this test has any details
-    const hasDetails = testDetails.some(detail => detail.testId === testId);
+    // Get test name from available sources
+    const testName = availableTest?.name || testResult?.test_name || testId;
+    
+    // Prepare a normalized version of strings for more flexible matching
+    const normalizeString = (str) => str.toString().toLowerCase().trim().replace(/[-_\s]+/g, '');
+    const currentNameNormalized = currentTestName ? normalizeString(currentTestName) : '';
+    const testIdNormalized = normalizeString(testId);
+    const testNameNormalized = testName ? normalizeString(testName) : '';
+    
+    // Find test details that might match this test, even with partial ID matching
+    const matchingTestDetails = testDetails.filter(detail => {
+      if (detail.testId === testId) return true; // Exact match
+      
+      // Try partial/fuzzy matching
+      const detailIdNormalized = normalizeString(detail.testId);
+      return testIdNormalized.includes(detailIdNormalized) || 
+             detailIdNormalized.includes(testIdNormalized);
+    });
+    
+    // Check if we have any matching details
+    const hasDetails = matchingTestDetails.length > 0;
+    
+    console.log("Test matching debug:", { 
+      currentTestName, 
+      currentNameNormalized, 
+      testId, 
+      testIdNormalized,
+      testName,
+      testNameNormalized,
+      runningTests,
+      hasDetails,
+      matchingTestDetails: matchingTestDetails.length
+    });
+    
+    // Improved test status detection
+    let status;
+    if (testResult?.status) {
+      // If we have a result, use its status
+      status = testResult.status;
+    } else if (
+      // Check if this test is currently running by comparing the test ID or name
+      runningTests && currentTestName && (
+        // Direct matches
+        currentTestName === testId ||
+        currentTestName === testName ||
+        // Normalized fuzzy matches for more resilience
+        currentNameNormalized.includes(testIdNormalized) ||
+        testIdNormalized.includes(currentNameNormalized) ||
+        currentNameNormalized.includes(testNameNormalized) ||
+        testNameNormalized.includes(currentNameNormalized)
+      )
+    ) {
+      // This test is currently running
+      status = 'running';
+      console.log("Test status set to running for:", testId);
+    } else if (runningTests && hasDetails) {
+      // If tests are running and we have details for this test but no result yet
+      // it's likely running or just completed
+      status = 'running'; 
+      console.log("Test status set to running (has details) for:", testId);
+    } else {
+      // Otherwise, it's queued
+      status = 'queued';
+    }
     
     return {
       id: testId,
-      name: availableTest?.name || testResult?.test_name || testId,
+      name: testName,
       category: availableTest?.category || testResult?.test_category || 'unknown',
-      status: testResult?.status || (currentTestName === (availableTest?.name || testId) ? 'running' : 'queued'),
+      status: status,
       hasDetails
     };
   };
@@ -82,7 +151,19 @@ const TestSidebar = ({
   
   // Get message counts for each test
   const getTestMessageCounts = (testId) => {
-    const messages = testDetails.filter(detail => detail.testId === testId);
+    // Normalize strings for matching
+    const normalizeString = (str) => str.toString().toLowerCase().trim().replace(/[-_\s]+/g, '');
+    const testIdNormalized = normalizeString(testId);
+    
+    // Find messages that match this test, with partial ID matching
+    const messages = testDetails.filter(detail => {
+      if (detail.testId === testId) return true; // Exact match
+      
+      // Try partial/fuzzy matching
+      const detailIdNormalized = normalizeString(detail.testId);
+      return testIdNormalized.includes(detailIdNormalized) || 
+             detailIdNormalized.includes(testIdNormalized);
+    });
     
     return {
       total: messages.length,
@@ -155,14 +236,14 @@ const TestSidebar = ({
             <React.Fragment key={testId}>
               <ListItemButton 
                 selected={selectedTestId === testId}
-                onClick={() => onSelectTest(testId)}
+                onClick={() => handleSelectTest(testId)}
                 sx={{ 
                   borderLeft: '4px solid', 
                   borderColor: testInfo.hasDetails ? categoryColor : 'transparent',
                   opacity: testInfo.hasDetails ? 1 : 0.6,
                   pl: 1.5
                 }}
-                disabled={messageCounts.total === 0}
+                disabled={messageCounts.total === 0 && testInfo.status !== 'running'}
               >
                 <ListItemText 
                   primary={
