@@ -711,7 +711,8 @@ const RunTestsPage = () => {
                 testId: inputTestId,
                 content: data.prompt,
                 promptType: data.prompt_type,
-                timestamp: data.timestamp || new Date().toISOString()
+                timestamp: data.timestamp || new Date().toISOString(),
+                caseId: data.case_id || null  // Store case_id if available
               }]);
               break;
               
@@ -725,7 +726,8 @@ const RunTestsPage = () => {
                 type: 'output',
                 testId: outputTestId,
                 content: data.output,
-                timestamp: data.timestamp || new Date().toISOString()
+                timestamp: data.timestamp || new Date().toISOString(),
+                caseId: data.case_id || null  // Store case_id if available
               }]);
               break;
               
@@ -733,13 +735,19 @@ const RunTestsPage = () => {
               // Normalize the test ID for consistency
               const evalTestId = normalizeTestId(data.test_id);
               
-              addLog(`Evaluation (${evalTestId}): score ${data.evaluation.strong_reject_score || 'N/A'}`);
+              // Use bias_score for QA test or strong_reject_score for security tests
+              const scoreDisplay = data.evaluation.bias_score !== undefined 
+                ? data.evaluation.bias_score 
+                : (data.evaluation.strong_reject_score || 'N/A');
+                
+              addLog(`Evaluation (${evalTestId}): score ${scoreDisplay}`);
               // Add to test details
               setTestDetails(prev => [...prev, {
                 type: 'evaluation',
                 testId: evalTestId,
                 content: data.evaluation,
-                timestamp: data.timestamp || new Date().toISOString()
+                timestamp: data.timestamp || new Date().toISOString(),
+                caseId: data.case_id || data.evaluation.case_id || null  // Store case_id if available
               }]);
               break;
               
