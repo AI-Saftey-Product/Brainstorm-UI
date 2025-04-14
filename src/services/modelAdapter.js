@@ -5,6 +5,7 @@
 
 import * as huggingFaceService from './huggingFaceService';
 import * as openaiService from './openaiService';
+import * as llamaService from './llamaService';
 
 /**
  * Abstract model adapter class
@@ -180,6 +181,80 @@ class OpenAIAdapter extends ModelAdapter {
 }
 
 /**
+ * Llama model adapter
+ */
+class LlamaAdapter extends ModelAdapter {
+  constructor(modelId, apiKey, options = {}) {
+    super(modelId, apiKey, options);
+    this.temperature = options.temperature || 0.7;
+    this.maxTokens = options.maxTokens || 100;
+    this.apiEndpoint = options.apiEndpoint || 'http://localhost:8000/v1';
+  }
+
+  async initialize() {
+    try {
+      const isAvailable = await llamaService.checkModelAvailability(this.modelId, this.apiKey);
+      if (!isAvailable) {
+        throw new Error(`Model ${this.modelId} is not available`);
+      }
+      return true;
+    } catch (error) {
+      throw new Error(`Failed to initialize Llama model: ${error.message}`);
+    }
+  }
+
+  async generate(prompt, options = {}) {
+    try {
+      const response = await llamaService.generateText(
+        this.modelId,
+        prompt,
+        {
+          max_tokens: options.maxTokens || this.maxTokens,
+          temperature: options.temperature || this.temperature,
+          ...options
+        },
+        this.apiKey
+      );
+      return response;
+    } catch (error) {
+      throw new Error(`Failed to generate text: ${error.message}`);
+    }
+  }
+
+  async chat(messages, options = {}) {
+    try {
+      const response = await llamaService.chat(
+        this.modelId,
+        messages,
+        {
+          max_tokens: options.maxTokens || this.maxTokens,
+          temperature: options.temperature || this.temperature,
+          ...options
+        },
+        this.apiKey
+      );
+      return response;
+    } catch (error) {
+      throw new Error(`Failed to chat: ${error.message}`);
+    }
+  }
+
+  async embeddings(input, options = {}) {
+    try {
+      const response = await llamaService.createEmbeddings(
+        this.modelId,
+        input,
+        options,
+        this.apiKey
+      );
+      return response;
+    } catch (error) {
+      throw new Error(`Failed to create embeddings: ${error.message}`);
+    }
+  }
+}
+
+/**
  * Create a model adapter for the given model configuration
  * @param {Object} modelConfig - Model configuration
  * @returns {ModelAdapter} Model adapter instance
@@ -190,6 +265,8 @@ export const createModelAdapter = (modelConfig) => {
     
     if (source === 'openai') {
       return new OpenAIAdapter(modelConfig);
+    } else if (source === 'llama') {
+      return new LlamaAdapter(modelConfig.modelId, modelConfig.apiKey, modelConfig);
     } else {
       // Default to Hugging Face adapter
       return new HuggingFaceAdapter(modelConfig);

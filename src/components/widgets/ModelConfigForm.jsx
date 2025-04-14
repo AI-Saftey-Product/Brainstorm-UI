@@ -25,6 +25,7 @@ const MODEL_CATEGORIES = {
 const MODEL_SOURCES = [
   "huggingface",
   "openai",
+  "llama",
   "custom"
 ];
 
@@ -35,6 +36,63 @@ const OPENAI_MODELS = [
   "gpt-3.5-turbo",
   "text-davinci-003",
   "gpt-4-vision-preview"
+];
+
+// Llama model options
+const LLAMA_MODELS = [
+  // Llama 4 models
+  "llama4-maverick",
+  "llama4-scout",
+  
+  // Llama 3.3 models
+  "llama3.3-70b",
+  
+  // Llama 3.2 models
+  "llama3.2-90b-vision",
+  "llama3.2-11b-vision",
+  "llama3.2-3b",
+  "llama3.2-1b",
+  
+  // Llama 3.1 models
+  "llama3.1-405b",
+  "llama3.1-70b",
+  "llama3.1-8b",
+  
+  // Llama 3 models
+  "llama3-70b",
+  "llama3-8b",
+  
+  // DeepSeek models
+  "deepseek-r1",
+  "deepseek-v3",
+  
+  // Gemma models
+  "gemma2-27b",
+  "gemma2-9b",
+  "gemma-7b",
+  "gemma-2b",
+  
+  // Mixtral models
+  "mixtral-8x22b-instruct",
+  "mixtral-8x7b-instruct",
+  
+  // Mistral models
+  "mistral-7b-instruct",
+  
+  // Qwen models
+  "Qwen2-72B",
+  "Qwen1.5-72B-Chat",
+  "Qwen1.5-110B-Chat",
+  "Qwen1.5-32B-Chat",
+  "Qwen1.5-14B-Chat",
+  "Qwen1.5-7B-Chat",
+  "Qwen1.5-4B-Chat",
+  "Qwen1.5-1.8B-Chat",
+  "Qwen1.5-0.5B-Chat",
+  
+  // Nous models
+  "Nous-Hermes-2-Mixtral-8x7B-DPO",
+  "Nous-Hermes-2-Yi-34B"
 ];
 
 const ModelConfigForm = ({ 
@@ -95,11 +153,14 @@ const ModelConfigForm = ({
     return recommendations[modelType] || " Popular options: gpt2, bert-base-uncased, facebook/bart-large-cnn";
   };
 
-  // Show API key field for HuggingFace and OpenAI models
-  const showApiKey = formValues.source === 'huggingface' || formValues.source === 'openai';
+  // Show API key field for HuggingFace, OpenAI, and Llama models
+  const showApiKey = formValues.source === 'huggingface' || formValues.source === 'openai' || formValues.source === 'llama';
   
   // Show OpenAI specific fields only for OpenAI models
   const showOpenAIFields = formValues.source === 'openai';
+
+  // Show Llama specific fields only for Llama models
+  const showLlamaFields = formValues.source === 'llama';
 
   return (
     <Box>
@@ -176,7 +237,7 @@ const ModelConfigForm = ({
               value={formValues.api_key}
               onChange={handleChange('api_key')}
               error={!!errors.api_key}
-              helperText={errors.api_key || `Your ${formValues.source === 'openai' ? 'OpenAI' : 'HuggingFace'} API key`}
+              helperText={errors.api_key || `Your ${formValues.source === 'openai' ? 'OpenAI' : formValues.source === 'llama' ? 'Llama' : 'HuggingFace'} API key`}
               type="password"
             />
           </Grid>
@@ -192,6 +253,24 @@ const ModelConfigForm = ({
                 onChange={handleChange('model_id')}
               >
                 {OPENAI_MODELS.map((model) => (
+                  <MenuItem key={model} value={model}>
+                    {model}
+                  </MenuItem>
+                ))}
+              </Select>
+              {errors.model_id && (
+                <FormHelperText>{errors.model_id}</FormHelperText>
+              )}
+            </FormControl>
+          ) : showLlamaFields ? (
+            <FormControl fullWidth error={!!errors.model_id}>
+              <InputLabel>Model ID</InputLabel>
+              <Select
+                value={formValues.model_id}
+                label="Model ID"
+                onChange={handleChange('model_id')}
+              >
+                {LLAMA_MODELS.map((model) => (
                   <MenuItem key={model} value={model}>
                     {model}
                   </MenuItem>
@@ -267,6 +346,34 @@ const ModelConfigForm = ({
                 value={formValues.organization_id || ''}
                 onChange={handleChange('organization_id')}
                 helperText="Your OpenAI organization ID (if applicable)"
+              />
+            </Grid>
+          </>
+        )}
+
+        {/* Llama specific parameters */}
+        {showLlamaFields && (
+          <>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Temperature"
+                type="number"
+                inputProps={{ min: 0, max: 1, step: 0.1 }}
+                value={formValues.temperature}
+                onChange={handleChange('temperature')}
+                helperText="Controls randomness (0.0-1.0)"
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Max Tokens"
+                type="number"
+                inputProps={{ min: 1, max: 4096, step: 1 }}
+                value={formValues.max_tokens}
+                onChange={handleChange('max_tokens')}
+                helperText="Maximum tokens to generate"
               />
             </Grid>
           </>
