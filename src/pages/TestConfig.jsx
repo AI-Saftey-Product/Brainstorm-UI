@@ -728,7 +728,7 @@ const TestConfigPage = () => {
                             size="small" 
                             color="primary" 
                             variant="outlined"
-                            sx={{ ml: 1, borderColor: 'divider', color: 'black', borderColor: 'black' }}
+                            sx={{ ml: 1, color: 'black', borderColor: 'black' }}
                           />
                         )}
                       </Box>
