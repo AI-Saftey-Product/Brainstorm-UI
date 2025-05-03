@@ -14,8 +14,8 @@ const HomePage = React.lazy(() => import('./pages/Home'));
 const ModelConfigPage = React.lazy(() => import('./pages/ModelConfig'));
 const DatasetsPage = React.lazy(() => import('./pages/Datasets'));
 const DatasetConfigPage = React.lazy(() => import('./pages/DatasetConfig'));
-// const TestConfigPage = React.lazy(() => import('./pages/TestConfig'));
-// const ResultsPage = React.lazy(() => import('./pages/Results'));
+const EvalConfigPage = React.lazy(() => import('./pages/EvalConfig'));
+const EvalsPage = React.lazy(() => import('./pages/Evals'));
 // const ModelOverviewPage = React.lazy(() => import('./pages/ModelOverview'));
 // const RunTestsPage = React.lazy(() => import('./pages/RunTests'));
 // const DatasetsPage = React.lazy(() => import('./pages/Datasets'));
@@ -49,8 +49,8 @@ const App = () => {
                 <Route path="/model-config/:model_id?" element={<ModelConfigPage />} />
                 <Route path="/datasets" element={<DatasetsPage />} />
                 <Route path="/dataset-config/:dataset_id?" element={<DatasetConfigPage />} />
-              {/*<Route path="/test-config" element={<TestConfigPage />} />*/}
-              {/*<Route path="/results" element={<ResultsPage />} />*/}
+              <Route path="/eval-config/:eval_id?" element={<EvalConfigPage />} />
+              <Route path="/evals" element={<EvalsPage />} />
               {/*<Route path="/model-overview" element={<ModelOverviewPage />} />*/}
               {/*<Route path="/model/:modelId" element={<ModelOverviewPage />} />*/}
               {/*<Route path="/run-tests" element={<RunTestsPage />} />*/}

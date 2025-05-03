@@ -73,7 +73,16 @@ const DataPage = () => {
   };
 
   const confirmDelete = () => {
-    deleteModelConfig(selectedConfig.model_id);
+    fetch(`${API_BASE_URL}/api/datasets/delete_datasets`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify([selectedConfig.dataset_id]),
+    })
+        .then(res => {
+            if (!res.ok) throw new Error("Network error");
+        })
     setDeleteDialogOpen(false);
     setSelectedConfig(null);
     fetch_models();
