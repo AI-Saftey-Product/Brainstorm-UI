@@ -44,7 +44,7 @@ import TestDetailsPanel from '../components/tests/TestDetailsPanel';
 import TestSidebar from '../components/tests/TestSidebar';
 import { runTests, getFilteredTests } from '../services/testsService';
 import { createModelAdapter } from '../services/modelAdapter';
-import { getSavedModelConfigs, getModelConfigById, saveModelTestResults } from '../services/modelStorageService';
+import { getModelConfigById, saveModelTestResults } from '../services/modelStorageService';
 import websocketService from '../services/websocketService';
 import testResultsService from '../services/testResultsService';
 
@@ -204,7 +204,7 @@ const RunTestsPage = () => {
   }, []);
   
   const loadSavedConfigs = () => {
-    const configs = getSavedModelConfigs();
+    const configs = [];
     setSavedConfigs(configs);
   };
   

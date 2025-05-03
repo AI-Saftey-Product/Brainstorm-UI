@@ -26,15 +26,15 @@ import {
 import { Search, Grid as GridIcon, List } from 'lucide-react';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { useAppContext } from '../context/AppContext';
-import { getSavedModelConfigs, getModelTestResults, deleteModelConfig } from '../services/modelStorageService';
+import { getModelTestResults, deleteModelConfig } from '../services/modelStorageService';
 import { useHotkeys } from 'react-hotkeys-hook';
 import ModelCard from '../components/cards/ModelCard';
 import AddModelCard from '../components/cards/AddModelCard';
+const API_BASE_URL = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
 
 const HomePage = () => {
   const navigate = useNavigate();
   const { modelConfigured } = useAppContext();
-  const [savedConfigs, setSavedConfigs] = useState([]);
   const [selectedConfig, setSelectedConfig] = useState(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -43,65 +43,46 @@ const HomePage = () => {
   const [groupBy, setGroupBy] = useState('none');
   const [viewMode, setViewMode] = useState('grid');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const [savedConfigs, setSavedConfigs] = useState([]);
+
+  const fetch_models = () => {
+    fetch(`${API_BASE_URL}/api/models/get_models`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+        .then(res => {
+        if (!res.ok) throw new Error("Network error");
+        return res.json();
+      })
+      .then(data => {
+        setSavedConfigs(data);
+        setLoading(false);
+      })
+  }
+
 
   useEffect(() => {
-    loadSavedConfigs();
-  }, []);
+    fetch_models()
+  }, []); // empty dependency array = run once on mount
 
-  const loadSavedConfigs = () => {
-    const configs = getSavedModelConfigs();
-    const configsWithResults = configs.map(config => {
-      const testResults = getModelTestResults(config.id);
-      
-      // Normalize config to ensure it has both old and new field names
-      return {
-        ...config,
-        // Ensure both old and new field names are available
-        name: config.name || config.modelName || 'Unnamed Model',
-        modelName: config.name || config.modelName || 'Unnamed Model',
-        
-        modality: config.modality || config.modelCategory || 'NLP',
-        modelCategory: config.modality || config.modelCategory || 'NLP',
-        
-        sub_type: config.sub_type || config.modelType || '',
-        modelType: config.sub_type || config.modelType || '',
-        
-        model_id: config.model_id || config.modelId || config.selectedModel || '',
-        modelId: config.model_id || config.modelId || config.selectedModel || '',
-        selectedModel: config.model_id || config.modelId || config.selectedModel || '',
-        
-        source: config.source || 'huggingface',
-        
-        api_key: config.api_key || config.apiKey || '',
-        apiKey: config.api_key || config.apiKey || '',
-        
-        testResults,
-        lastTestRun: testResults.length > 0 ? 
-          testResults[testResults.length - 1].timestamp : null
-      };
-    });
-    setSavedConfigs(configsWithResults);
-    setLoading(false);
-  };
-
-  const handleDeleteConfig = async (config) => {
+  const handleDeleteConfig = (config) => {
     setSelectedConfig(config);
     setDeleteDialogOpen(true);
   };
 
-  const confirmDelete = async () => {
-    if (selectedConfig) {
-      await deleteModelConfig(selectedConfig.id);
-      loadSavedConfigs();
-      setDeleteDialogOpen(false);
-      setSelectedConfig(null);
-      showSnackbar('Model configuration deleted successfully');
-    }
+  const confirmDelete = () => {
+    deleteModelConfig(selectedConfig.model_id);
+    setDeleteDialogOpen(false);
+    setSelectedConfig(null);
+    fetch_models();
+    showSnackbar('Model configuration deleted successfully');
   };
 
   const handleEditConfig = (config) => {
     // Make sure we're passing the normalized config with both old and new field names
-    navigate('/model-config', { state: { config } });
+    navigate(`/model-config/${config.model_id}`, { state: { config } });
   };
 
   const handleGetStarted = () => {
@@ -175,11 +156,11 @@ const HomePage = () => {
 
   // Enhanced navigation handler with animation
   const handleCardClick = useCallback((config) => {
-    const card = document.querySelector(`[data-model-id="${config.id}"]`);
+    const card = document.querySelector(`[data-model-id="${config.model_id}"]`);
     if (card) {
       card.style.transform = 'scale(0.98)';
       setTimeout(() => {
-        navigate(`/model/${config.id}`);
+        navigate(`/model/${config.model_id}`);
       }, 150);
     }
   }, [navigate]);
@@ -199,7 +180,7 @@ const HomePage = () => {
           component="h1" 
           sx={{ mb: 4 }}
         >
-          Model Overview
+          Models Overview
         </Typography>
 
         {/* Controls with keyboard shortcut hints */}

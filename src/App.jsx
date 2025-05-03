@@ -12,13 +12,15 @@ import MainLayout from './components/layout/MainLayout';
 // Lazy load pages
 const HomePage = React.lazy(() => import('./pages/Home'));
 const ModelConfigPage = React.lazy(() => import('./pages/ModelConfig'));
-const TestConfigPage = React.lazy(() => import('./pages/TestConfig'));
-const ResultsPage = React.lazy(() => import('./pages/Results'));
-const ModelOverviewPage = React.lazy(() => import('./pages/ModelOverview'));
-const RunTestsPage = React.lazy(() => import('./pages/RunTests'));
 const DatasetsPage = React.lazy(() => import('./pages/Datasets'));
 const DatasetConfigPage = React.lazy(() => import('./pages/DatasetConfig'));
-const DatasetDetailPage = React.lazy(() => import('./pages/DatasetDetail'));
+// const TestConfigPage = React.lazy(() => import('./pages/TestConfig'));
+// const ResultsPage = React.lazy(() => import('./pages/Results'));
+// const ModelOverviewPage = React.lazy(() => import('./pages/ModelOverview'));
+// const RunTestsPage = React.lazy(() => import('./pages/RunTests'));
+// const DatasetsPage = React.lazy(() => import('./pages/Datasets'));
+
+// const DatasetDetailPage = React.lazy(() => import('./pages/DatasetDetail'));
 
 // Loading fallback
 const LoadingFallback = () => (
@@ -43,15 +45,18 @@ const App = () => {
           <Suspense fallback={<LoadingFallback />}>
             <Routes>
               <Route path="/" element={<HomePage />} />
-              <Route path="/model-config" element={<ModelConfigPage />} />
-              <Route path="/test-config" element={<TestConfigPage />} />
-              <Route path="/results" element={<ResultsPage />} />
-              <Route path="/model-overview" element={<ModelOverviewPage />} />
-              <Route path="/model/:modelId" element={<ModelOverviewPage />} />
-              <Route path="/run-tests" element={<RunTestsPage />} />
-              <Route path="/datasets" element={<DatasetsPage />} />
-              <Route path="/dataset-config" element={<DatasetConfigPage />} />
-              <Route path="/dataset/:datasetId" element={<DatasetDetailPage />} />
+              <Route path="/models" element={<HomePage />} />
+                <Route path="/model-config/:model_id?" element={<ModelConfigPage />} />
+                <Route path="/datasets" element={<DatasetsPage />} />
+                <Route path="/dataset-config/:dataset_id?" element={<DatasetConfigPage />} />
+              {/*<Route path="/test-config" element={<TestConfigPage />} />*/}
+              {/*<Route path="/results" element={<ResultsPage />} />*/}
+              {/*<Route path="/model-overview" element={<ModelOverviewPage />} />*/}
+              {/*<Route path="/model/:modelId" element={<ModelOverviewPage />} />*/}
+              {/*<Route path="/run-tests" element={<RunTestsPage />} />*/}
+              {/*<Route path="/datasets" element={<DatasetsPage />} />*/}
+
+              {/*<Route path="/dataset/:datasetId" element={<DatasetDetailPage />} />*/}
             </Routes>
           </Suspense>
         </MainLayout>

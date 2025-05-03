@@ -12,12 +12,12 @@ const Sidebar = ({ open }) => {
 
   const menuItems = [
     {
-      label: 'Pages',
+      label: 'Modules',
       type: 'header'
     },
     {
-      label: 'Model Overview',
-      path: '/model-overview',
+      label: 'Models',
+      path: '/models',
       icon: <LayoutDashboard size={18} />
     },
     {
@@ -26,20 +26,10 @@ const Sidebar = ({ open }) => {
       icon: <Database size={18} />
     },
     {
-      label: 'Model Config',
-      path: '/model-config',
-      icon: <Wrench size={18} />
-    },
-    {
-      label: 'Results Overview',
-      path: '/results',
+      label: 'Evals',
+      path: '/evals',
       icon: <PieChart size={18} />
     },
-    {
-      label: 'Test Config',
-      path: '/test-config',
-      icon: <Settings size={18} />
-    }
   ];
 
   return (
