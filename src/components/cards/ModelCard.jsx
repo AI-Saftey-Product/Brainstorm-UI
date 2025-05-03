@@ -42,7 +42,10 @@ const ModelCard = ({
           transform: 'scale(0.98)',
         }
       }}
-      onClick={onClick}
+      onClick={(e) => {
+              e.stopPropagation();
+              onEdit(config);
+            }}
     >
       <Box 
         sx={{ 

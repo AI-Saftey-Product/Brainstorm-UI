@@ -52,8 +52,8 @@ const DatasetConfigPage = () => {
         description: '',
 
         modality: 'NLP',
-        data_adapter: '',
-        sample_size: null,
+        dataset_adapter: 'MuSR',
+        sample_size: "3",
     });
 
     useEffect(() => {
@@ -135,6 +135,8 @@ const DatasetConfigPage = () => {
             setConfigSuccess(true);
             setSnackbarOpen(true);
             setLoading(false);
+
+            navigate("/datasets")
         } catch (error) {
             setConfigError(`Error initializing model: ${error.message || 'Unknown error'}`);
             setLoading(false);

@@ -199,6 +199,8 @@ const ModelConfigPage = () => {
             setConfigSuccess(true);
             setSnackbarOpen(true);
             setLoading(false);
+
+            navigate("/")
         } catch (error) {
             setConfigError(`Error initializing model: ${error.message || 'Unknown error'}`);
             setLoading(false);

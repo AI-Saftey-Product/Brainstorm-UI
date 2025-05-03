@@ -265,7 +265,7 @@ const HomePage = () => {
                       viewMode={viewMode}
                       onEdit={handleEditConfig}
                       onDelete={handleDeleteConfig}
-                      onClick={() => handleCardClick(config)}
+                      onClick={handleEditConfig}
                     />
                   </Grid>
                 ))}
