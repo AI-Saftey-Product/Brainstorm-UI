@@ -122,8 +122,15 @@ const EvalConfigPage = () => {
             // Create the model adapter with proper configuration
             const modelConfig = formValues;
 
-            modelConfig.scorer_agg_functions = modelConfig.scorer_agg_functions.split(',').map(item => item.trim());
-            modelConfig.scorer_agg_dimensions = modelConfig.scorer_agg_dimensions.split(',').map(item => item.trim());
+            console.log(modelConfig);
+
+            if (typeof modelConfig.scorer_agg_functions === 'string') {
+                modelConfig.scorer_agg_functions = modelConfig.scorer_agg_functions.split(',').map(item => item.trim());
+            }
+
+            if (typeof modelConfig.scorer_agg_dimensions === 'string') {
+                modelConfig.scorer_agg_dimensions = modelConfig.scorer_agg_dimensions.split(',').map(item => item.trim());
+            }
 
             setModelInitStatus(`${formValues.source} model "${formValues.eval_id}" initialized successfully!`);
             console.log(modelConfig)

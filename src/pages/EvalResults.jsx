@@ -70,7 +70,9 @@ const EvalConfigPage = () => {
                     .then(data => {
                         setSavedConfigs(data);
                         // console.log(data[0].results.slice(0, 2));
-                        setLogs(data[0].results);
+                        if (data[0].results) {
+                            setLogs(data[0].results);
+                        }
                     })
             }
         }, []); // empty dependency array = run once on mount

@@ -59,6 +59,8 @@ const ModelConfigPage = () => {
 
         endpoint_url: '',
         api_key: '',
+
+        eval_ids: [],
     });
 
     useEffect(() => {
