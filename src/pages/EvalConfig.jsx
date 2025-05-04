@@ -16,6 +16,7 @@ import {createModelAdapter} from '../services/modelAdapter';
 import {saveModelConfig} from '../services/modelStorageService';
 import DatasetConfigForm from "@/components/widgets/DatasetConfigForm.jsx";
 import EvalConfigForm from "@/components/widgets/EvalConfigForm.jsx";
+import {fetchWithAuth} from "@/pages/Login.jsx";
 
 const API_BASE_URL = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
 
@@ -30,7 +31,7 @@ const EvalConfigPage = () => {
     const [passedConfig, setSavedConfigs] = useState([]);
     useEffect(() => {
         if (eval_id) {
-            fetch(`${API_BASE_URL}/api/evals/get_evals?eval_id=${eval_id}`, {
+            fetchWithAuth(`${API_BASE_URL}/api/evals/get_evals?eval_id=${eval_id}`, {
                 method: 'GET',
                 headers: {
                     'Content-Type':  'application/json',
@@ -126,7 +127,7 @@ const EvalConfigPage = () => {
 
             setModelInitStatus(`${formValues.source} model "${formValues.eval_id}" initialized successfully!`);
             console.log(modelConfig)
-            fetch(`${API_BASE_URL}/api/evals/create_or_update_eval`, {
+            fetchWithAuth(`${API_BASE_URL}/api/evals/create_or_update_eval`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

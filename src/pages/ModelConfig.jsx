@@ -15,6 +15,7 @@ import ModelConfigForm from '../components/widgets/ModelConfigForm';
 import {useAppContext} from '../context/AppContext';
 import {createModelAdapter} from '../services/modelAdapter';
 import {saveModelConfig} from '../services/modelStorageService';
+import {fetchWithAuth} from "@/pages/Login.jsx";
 
 const API_BASE_URL = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
 
@@ -29,7 +30,7 @@ const ModelConfigPage = () => {
     const [passedConfig, setSavedConfigs] = useState([]);
     useEffect(() => {
         if (model_id) {
-            fetch(`${API_BASE_URL}/api/models/get_models?model_id=${model_id}`, {
+            fetchWithAuth(`${API_BASE_URL}/api/models/get_models?model_id=${model_id}`, {
                 method: 'GET',
                 headers: {
                     'Content-Type':  'application/json',
@@ -185,7 +186,7 @@ const ModelConfigPage = () => {
 
             setModelInitStatus(`${formValues.source} model "${formValues.model_id}" initialized successfully!`);
 
-            fetch(`${API_BASE_URL}/api/models/create_or_update_model`, {
+            fetchWithAuth(`${API_BASE_URL}/api/models/create_or_update_model`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

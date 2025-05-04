@@ -2,6 +2,7 @@ import React, {useEffect, useState} from 'react';
 import { Box, IconButton, InputBase, Typography, Breadcrumbs, Link } from '@mui/material';
 import { Search, History, Bell, User, ChevronRight, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import {fetchWithAuth} from "@/pages/Login.jsx";
 const API_BASE_URL = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
 
 const TopBar = ({ onToggleSidebar, isSidebarOpen }) => {
@@ -10,7 +11,7 @@ const TopBar = ({ onToggleSidebar, isSidebarOpen }) => {
 
   const [configs, setSavedConfigs] = useState([]);
       useEffect(() => {
-        fetch(`${API_BASE_URL}/api/models/get_models`, {
+        fetchWithAuth(`${API_BASE_URL}/api/models/get_models`, {
             method: 'GET',
             headers: {
               'Content-Type': 'application/json',
@@ -243,7 +244,7 @@ const TopBar = ({ onToggleSidebar, isSidebarOpen }) => {
         <IconButton size="small">
           <Bell size={20} strokeWidth={1.5} />
         </IconButton>
-        <IconButton size="small">
+        <IconButton size="small" onClick={() => {navigate("/login")}}>
           <User size={20} strokeWidth={1.5} />
         </IconButton>
       </Box>

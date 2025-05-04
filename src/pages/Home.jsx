@@ -30,6 +30,7 @@ import { getModelTestResults, deleteModelConfig } from '../services/modelStorage
 import { useHotkeys } from 'react-hotkeys-hook';
 import ModelCard from '../components/cards/ModelCard';
 import AddModelCard from '../components/cards/AddModelCard';
+import {fetchWithAuth} from "@/pages/Login.jsx";
 const API_BASE_URL = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
 
 const HomePage = () => {
@@ -46,7 +47,7 @@ const HomePage = () => {
   const [savedConfigs, setSavedConfigs] = useState([]);
 
   const fetch_models = () => {
-    fetch(`${API_BASE_URL}/api/models/get_models`, {
+    fetchWithAuth(`${API_BASE_URL}/api/models/get_models`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',

@@ -2,6 +2,7 @@
  * Model Storage Service
  * Provides local storage for model configurations
  */
+import {fetchWithAuth} from "@/pages/Login.jsx";
 
 // Storage keys
 const MODEL_CONFIGS_KEY = 'brainstormModelConfigs';
@@ -113,7 +114,7 @@ export const getModelTestResultsMap = () => {
  */
 export const deleteModelConfig = (id) => {
     console.log(JSON.stringify([id]))
-    fetch(`${API_BASE_URL}/api/models/delete_models`, {
+    fetchWithAuth(`${API_BASE_URL}/api/models/delete_models`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

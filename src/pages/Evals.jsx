@@ -30,6 +30,7 @@ import {getModelTestResults, deleteModelConfig} from '../services/modelStorageSe
 import {useHotkeys} from 'react-hotkeys-hook';
 import EvalCard from '../components/cards/EvalCard';
 import AddEvalCard from '../components/cards/AddEvalCard';
+import {fetchWithAuth} from "@/pages/Login.jsx";
 
 const API_BASE_URL = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
 
@@ -47,7 +48,7 @@ const EvalPage = () => {
     const [savedConfigs, setSavedConfigs] = useState([]);
 
     const fetch_models = () => {
-        fetch(`${API_BASE_URL}/api/evals/get_evals`, {
+        fetchWithAuth(`${API_BASE_URL}/api/evals/get_evals`, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
@@ -74,7 +75,7 @@ const EvalPage = () => {
     };
 
     const confirmDelete = () => {
-        fetch(`${API_BASE_URL}/api/evals/delete_evals`, {
+        fetchWithAuth(`${API_BASE_URL}/api/evals/delete_evals`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

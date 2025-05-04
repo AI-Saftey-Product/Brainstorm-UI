@@ -17,9 +17,7 @@ const DatasetConfigPage = React.lazy(() => import('./pages/DatasetConfig'));
 const EvalConfigPage = React.lazy(() => import('./pages/EvalConfig'));
 const EvalsPage = React.lazy(() => import('./pages/Evals'));
 const EvalResultsPage = React.lazy(() => import('./pages/EvalResults'));
-// const ModelOverviewPage = React.lazy(() => import('./pages/ModelOverview'));
-// const RunTestsPage = React.lazy(() => import('./pages/RunTests'));
-// const DatasetsPage = React.lazy(() => import('./pages/Datasets'));
+const LoginPage = React.lazy(() => import('./pages/Login'));
 
 // const DatasetDetailPage = React.lazy(() => import('./pages/DatasetDetail'));
 
@@ -53,6 +51,7 @@ const App = () => {
               <Route path="/eval-config/:eval_id?" element={<EvalConfigPage />} />
               <Route path="/eval-results/:eval_id" element={<EvalResultsPage />} />
               <Route path="/evals" element={<EvalsPage />} />
+              <Route path="/login" element={<LoginPage />} />
               {/*<Route path="/model-overview" element={<ModelOverviewPage />} />*/}
               {/*<Route path="/model/:modelId" element={<ModelOverviewPage />} />*/}
               {/*<Route path="/run-tests" element={<RunTestsPage />} />*/}

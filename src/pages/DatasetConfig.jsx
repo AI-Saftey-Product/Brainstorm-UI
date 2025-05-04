@@ -15,6 +15,7 @@ import {useAppContext} from '../context/AppContext';
 import {createModelAdapter} from '../services/modelAdapter';
 import {saveModelConfig} from '../services/modelStorageService';
 import DatasetConfigForm from "@/components/widgets/DatasetConfigForm.jsx";
+import {fetchWithAuth} from "@/pages/Login.jsx";
 
 const API_BASE_URL = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
 
@@ -29,7 +30,7 @@ const DatasetConfigPage = () => {
     const [passedConfig, setSavedConfigs] = useState([]);
     useEffect(() => {
         if (dataset_id) {
-            fetch(`${API_BASE_URL}/api/datasets/get_datasets?dataset_id=${dataset_id}`, {
+            fetchWithAuth(`${API_BASE_URL}/api/datasets/get_datasets?dataset_id=${dataset_id}`, {
                 method: 'GET',
                 headers: {
                     'Content-Type':  'application/json',
@@ -121,7 +122,7 @@ const DatasetConfigPage = () => {
 
             setModelInitStatus(`${formValues.source} model "${formValues.dataset_id}" initialized successfully!`);
             console.log(modelConfig)
-            fetch(`${API_BASE_URL}/api/datasets/create_or_update_dataset`, {
+            fetchWithAuth(`${API_BASE_URL}/api/datasets/create_or_update_dataset`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

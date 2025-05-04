@@ -30,6 +30,7 @@ import { getModelTestResults, deleteModelConfig } from '../services/modelStorage
 import { useHotkeys } from 'react-hotkeys-hook';
 import DatasetCard from '../components/cards/DatasetCard';
 import AddDatasetCard from '../components/cards/AddDatasetCard';
+import {fetchWithAuth} from "@/pages/Login.jsx";
 const API_BASE_URL = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
 
 const DataPage = () => {
@@ -46,7 +47,7 @@ const DataPage = () => {
   const [savedConfigs, setSavedConfigs] = useState([]);
 
   const fetch_models = () => {
-    fetch(`${API_BASE_URL}/api/datasets/get_datasets`, {
+    fetchWithAuth(`${API_BASE_URL}/api/datasets/get_datasets`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -73,7 +74,7 @@ const DataPage = () => {
   };
 
   const confirmDelete = () => {
-    fetch(`${API_BASE_URL}/api/datasets/delete_datasets`, {
+    fetchWithAuth(`${API_BASE_URL}/api/datasets/delete_datasets`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

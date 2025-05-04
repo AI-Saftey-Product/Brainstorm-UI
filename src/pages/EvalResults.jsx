@@ -16,6 +16,7 @@ import {createModelAdapter} from '../services/modelAdapter';
 import {saveModelConfig} from '../services/modelStorageService';
 import DatasetConfigForm from "@/components/widgets/DatasetConfigForm.jsx";
 import EvalConfigForm from "@/components/widgets/EvalConfigForm.jsx";
+import {fetchWithAuth} from "@/pages/Login.jsx";
 
 const API_BASE_URL = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
 function TreeNode({ name, data }) {
@@ -56,7 +57,7 @@ const EvalConfigPage = () => {
         const [passedConfig, setSavedConfigs] = useState([]);
         useEffect(() => {
             if (eval_id) {
-                fetch(`${API_BASE_URL}/api/evals/get_evals?eval_id=${eval_id}`, {
+                fetchWithAuth(`${API_BASE_URL}/api/evals/get_evals?eval_id=${eval_id}`, {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
@@ -86,7 +87,7 @@ const EvalConfigPage = () => {
             setLogs([]); // Clear previous logs
 
             try {
-                const response = await fetch(`${API_BASE_URL}/api/evals/run_eval?eval_id=${eval_id}`, {
+                const response = await fetchWithAuth(`${API_BASE_URL}/api/evals/run_eval?eval_id=${eval_id}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
