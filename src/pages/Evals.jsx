@@ -165,16 +165,10 @@ const EvalPage = () => {
         handleGetStarted();
     });
 
-    // Enhanced navigation handler with animation
-    const handleCardClick = useCallback((config) => {
-        const card = document.querySelector(`[data-model-id="${config.eval_id}"]`);
-        if (card) {
-            card.style.transform = 'scale(0.98)';
-            setTimeout(() => {
-                navigate(`/dataset/${config.eval_id}`);
-            }, 150);
-        }
-    }, [navigate]);
+    const handleCardClick = (config) => {
+        // Make sure we're passing the normalized config with both old and new field names
+        navigate(`/eval-results/${config.eval_id}`, {state: {config}});
+    };
 
     return (
         <Container maxWidth="lg">
@@ -276,7 +270,7 @@ const EvalPage = () => {
                                             viewMode={viewMode}
                                             onEdit={handleEditConfig}
                                             onDelete={handleDeleteConfig}
-                                            onClick={handleEditConfig}
+                                            onClick={handleCardClick}
                                         />
                                     </Grid>
                                 ))}

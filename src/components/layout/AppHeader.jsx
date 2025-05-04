@@ -20,7 +20,7 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import { useNavigate } from 'react-router-dom';
-import brainstormLogo from '../../assets/brainstorm_logo.png';
+import brainstormLogo from '../../assets/brainstorm_safety_logo.jpg';
 
 const AppHeader = ({ toggleDrawer }) => {
   const [notificationsAnchorEl, setNotificationsAnchorEl] = useState(null);
@@ -91,7 +91,7 @@ const AppHeader = ({ toggleDrawer }) => {
               objectFit: 'contain'
             }} 
           />
-          BRAINSTORM
+          EVAL
         </Typography>
         
         <Box sx={{ display: 'flex' }}>

@@ -90,7 +90,7 @@ const EvalConfigForm = ({
                     <TextField
                         fullWidth
                         label="Model ID"
-                        value={formValues.dataset_id}
+                        value={formValues.model_id}
                         onChange={handleChange('model_id')}
                         error={!!errors.model_id}
                         helperText={errors.model_id}

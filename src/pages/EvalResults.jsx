@@ -164,15 +164,11 @@ const EvalConfigPage = () => {
                 component="h1"
                 sx={{mb: 4}}
             >
-                {eval_id ? 'Eval Configuration' : 'New Eval Configuration'}
+                Eval Results
             </Typography>
 
             <Paper sx={{p: 3, mb: 3, boxShadow: 'none', border: '1px solid', borderColor: 'divider'}}>
-                <EvalConfigForm
-                    initialValues={formValues}
-                    onChange={handleFormChange}
-                    errors={validationErrors}
-                />
+
 
                 <Box sx={{mt: 4, display: 'flex', justifyContent: 'flex-end'}}>
                     <Button

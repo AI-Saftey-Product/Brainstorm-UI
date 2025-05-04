@@ -2,7 +2,7 @@ import React from 'react';
 import { Box, Typography, List, ListItem, ListItemIcon, ListItemText } from '@mui/material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { LayoutDashboard, Wrench, PieChart, Settings, Database } from 'lucide-react';
-import brainstormLogo from '../../assets/brainstorm_logo.png';
+import brainstormLogo from '../../assets/brainstorm_safety_logo.jpg';
 
 const Sidebar = ({ open }) => {
   const navigate = useNavigate();
@@ -83,7 +83,7 @@ const Sidebar = ({ open }) => {
             color: 'text.primary'
           }}
         >
-          BRAINSTORM
+          EVAL
         </Typography>
       </Box>
 
