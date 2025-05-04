@@ -9,18 +9,11 @@ const PORT = process.env.PORT || 8080;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Serve static files
-app.use(express.static(path.join('dist')));
+// 1) Serve the built Vite output
+app.use(express.static(path.join(__dirname, 'dist')));
 
-// Handle SPA routing
-// app.get('*', (req, res) => {
-//   path = (path.join('dist', 'index.html'));
-//   console.log(path);
-//   res.sendFile(path);
-// });
-
-app.get('/', (req, res) => {
-  res.send('Hello from App Engine!');
+app.use((req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 app.listen(PORT, () => {
