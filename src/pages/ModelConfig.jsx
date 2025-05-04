@@ -51,55 +51,23 @@ const ModelConfigPage = () => {
         model_id: 'my_model',
         name: 'My Model',
         description: '',
-
         modality: 'NLP',
-        sub_type: '',
+        sub_type: 'TEXT_GENERATION',
         provider: '',
         provider_model: '',
-
-        endpoint_url: '',
-        api_key: '',
-
-        eval_ids: [],
     });
 
     useEffect(() => {
         if (passedConfig.length > 0) {
             console.log(passedConfig);
-            setFormValues(
-                passedConfig[0]
-            );
+            const config = {
+                ...passedConfig[0],
+                modality: 'NLP',
+                sub_type: 'TEXT_GENERATION'
+            };
+            setFormValues(config);
         }
     }, [passedConfig]);
-
-    // Load config from passedConfig or modelConfigured on mount
-    // useEffect(() => {
-    //   if (passedConfig) {
-    //     // Normalize the passed config to ensure it has the new field names
-    //     const normalizedConfig = {
-    //       name: passedConfig.name || passedConfig.modelName || '',
-    //       modality: passedConfig.modality || passedConfig.modelCategory || 'NLP',
-    //       sub_type: passedConfig.sub_type || passedConfig.modelType || '',
-    //       source: passedConfig.source || 'huggingface',
-    //       model_id: passedConfig.model_id || passedConfig.modelId || passedConfig.selectedModel || '',
-    //       api_key: passedConfig.api_key || passedConfig.apiKey || '',
-    //       verbose: passedConfig.verbose || false
-    //     };
-    //     setFormValues(normalizedConfig);
-    //   } else if (modelConfigured) {
-    //     // Normalize the existing model config
-    //     const normalizedConfig = {
-    //       name: modelConfigured.name || modelConfigured.modelName || '',
-    //       modality: modelConfigured.modality || modelConfigured.modelCategory || 'NLP',
-    //       sub_type: modelConfigured.sub_type || modelConfigured.modelType || '',
-    //       source: modelConfigured.source || 'huggingface',
-    //       model_id: modelConfigured.model_id || modelConfigured.modelId || modelConfigured.selectedModel || '',
-    //       api_key: modelConfigured.api_key || modelConfigured.apiKey || '',
-    //       verbose: modelConfigured.verbose || false
-    //     };
-    //     setFormValues(normalizedConfig);
-    //   }
-    // }, [passedConfig, modelConfigured]);
 
     const [validationErrors, setValidationErrors] = useState({});
     const [loading, setLoading] = useState(false);
@@ -109,7 +77,11 @@ const ModelConfigPage = () => {
     const [modelInitStatus, setModelInitStatus] = useState('');
 
     const handleFormChange = (values) => {
-        setFormValues(values);
+        setFormValues({
+            ...values,
+            modality: 'NLP',
+            sub_type: 'TEXT_GENERATION'
+        });
 
         // Clear validation errors for changed fields
         const updatedErrors = {...validationErrors};
@@ -129,43 +101,10 @@ const ModelConfigPage = () => {
             errors.name = 'Model name is required';
         }
 
-        if (!formValues.sub_type) {
-            errors.sub_type = 'Model type is required';
-        }
-
         // Validate model ID
         if (!formValues.model_id) {
             errors.model_id = 'Model ID is required';
         }
-
-        // Validate API key for HuggingFace models
-        if (formValues.source === 'huggingface' && !formValues.api_key) {
-            errors.api_key = 'API key is required for HuggingFace models';
-        }
-
-        // Validate API key for OpenAI models
-        if (formValues.source === 'openai' && !formValues.api_key) {
-            errors.api_key = 'API key is required for OpenAI models';
-        }
-
-        // // Validate OpenAI specific parameters
-        // if (formValues.source === 'openai') {
-        //     if (formValues.temperature < 0 || formValues.temperature > 2) {
-        //         errors.temperature = 'Temperature must be between 0 and 2';
-        //     }
-        //
-        //     if (formValues.max_tokens < 1 || formValues.max_tokens > 4096) {
-        //         errors.max_tokens = 'Max tokens must be between 1 and 4096';
-        //     }
-        //
-        //     if (formValues.frequency_penalty < -2 || formValues.frequency_penalty > 2) {
-        //         errors.frequency_penalty = 'Frequency penalty must be between -2 and 2';
-        //     }
-        //
-        //     if (formValues.presence_penalty < -2 || formValues.presence_penalty > 2) {
-        //         errors.presence_penalty = 'Presence penalty must be between -2 and 2';
-        //     }
-        // }
 
         setValidationErrors(errors);
         return Object.keys(errors).length === 0;
@@ -181,12 +120,19 @@ const ModelConfigPage = () => {
         setModelInitStatus('');
 
         try {
-            setModelInitStatus(`Initializing ${formValues.source} model...`);
+            setModelInitStatus(`Initializing ${formValues.provider} model...`);
 
             // Create the model adapter with proper configuration
-            const modelConfig = formValues;
+            const modelConfig = {
+                ...formValues,
+                modality: 'NLP',
+                sub_type: 'TEXT_GENERATION',
+                // Add these required fields with default values
+                endpoint_url: '',
+                api_key: ''
+            };
 
-            setModelInitStatus(`${formValues.source} model "${formValues.model_id}" initialized successfully!`);
+            setModelInitStatus(`${formValues.provider} model "${formValues.model_id}" initialized successfully!`);
 
             fetchWithAuth(`${API_BASE_URL}/api/models/create_or_update_model`, {
                 method: 'POST',

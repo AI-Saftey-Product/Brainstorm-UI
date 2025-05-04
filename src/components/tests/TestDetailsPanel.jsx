@@ -43,12 +43,28 @@ const TestDetailsPanel = ({ testDetails, runningTests, selectedTestId }) => {
     return groups;
   }, {});
   
-  // Auto-scroll logic
+  // Auto-scroll logic - use a more aggressive approach
   useEffect(() => {
     if (autoScroll && detailsEndRef.current) {
-      detailsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      setTimeout(() => {
+        detailsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      }, 100); // Small delay to ensure content has rendered
+    }
+    
+    // Log when new details are added for debugging
+    if (testDetails.length > 0) {
+      console.log(`TestDetailsPanel: Test details updated, now have ${testDetails.length} items`);
     }
   }, [testDetails, autoScroll]);
+  
+  // Add key-based effect to force refresh on important state changes
+  useEffect(() => {
+    console.log("TestDetailsPanel: Component refreshed with", {
+      detailsCount: testDetails.length,
+      selectedTestId,
+      runningTests
+    });
+  }, [testDetails.length, selectedTestId, runningTests]);
   
   // Filter test details based on active tab and search filter
   const filteredDetails = testDetails.filter(item => {

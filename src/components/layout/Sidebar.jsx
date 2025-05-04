@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Typography, List, ListItem, ListItemIcon, ListItemText } from '@mui/material';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Wrench, PieChart, Settings, Database } from 'lucide-react';
+import { LayoutDashboard, Wrench, PieChart, Settings, Database, PlayCircle } from 'lucide-react';
 import brainstormLogo from '../../assets/brainstorm_safety_logo.jpg';
 
 const Sidebar = ({ open }) => {
@@ -29,6 +29,11 @@ const Sidebar = ({ open }) => {
       label: 'Evals',
       path: '/evals',
       icon: <PieChart size={18} />
+    },
+    {
+      label: 'Run Tests',
+      path: '/run-tests',
+      icon: <PlayCircle size={18} />
     },
   ];
 

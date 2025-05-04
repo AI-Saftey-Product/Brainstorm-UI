@@ -12,6 +12,15 @@ const API_BASE_URL = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:800
  * Get saved model configurations from localStorage
  * @returns {Array} Array of saved model configurations
  */
+export const getSavedModelConfigs = () => {
+    try {
+        const configsString = localStorage.getItem(MODEL_CONFIGS_KEY);
+        return configsString ? JSON.parse(configsString) : [];
+    } catch (error) {
+        console.error('Error retrieving model configs:', error);
+        return [];
+    }
+};
 
 /**
  * Save a model configuration to localStorage

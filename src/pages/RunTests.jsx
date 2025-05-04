@@ -28,6 +28,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Stack,
 } from '@mui/material';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import BarChartIcon from '@mui/icons-material/BarChart';
@@ -47,9 +48,10 @@ import { createModelAdapter } from '../services/modelAdapter';
 import { getModelConfigById, saveModelTestResults } from '../services/modelStorageService';
 import websocketService from '../services/websocketService';
 import testResultsService from '../services/testResultsService';
+import { fetchWithAuth } from "@/pages/Login.jsx";
 
-// Extract the TESTS_API_URL from environment for direct API calls
-const TESTS_API_URL = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
+// Extract the API_BASE_URL from environment for direct API calls
+const API_BASE_URL = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
 
 // Color mapping for categories
 const CATEGORY_COLORS = {
@@ -212,50 +214,57 @@ const RunTestsPage = () => {
   useEffect(() => {
     const loadModelConfig = async () => {
       try {
-        // Try from location state first (from TestConfig navigation)
+        setLoading(true);
+        // Use the model config passed from the wizard
         let config = location.state?.modelConfig;
         
         if (!config) {
-          // If no location state, try to load from localStorage
-          const savedConfigs = await getSavedModelConfigs();
-          setSavedConfigs(savedConfigs);
+          // Only show error if no configuration was passed
+          setError('No model configuration provided. Please go back to the test wizard.');
+          setLoading(false);
+          return;
+        }
+        
+        // Normalize config to ensure it has both old and new field names
+        config = {
+          ...config,
+          name: config.name || config.modelName || 'Unnamed Model',
+          modelName: config.name || config.modelName || 'Unnamed Model',
           
-          if (savedConfigs.length > 0) {
-            // Default to first saved config
-            setSelectedModelId(savedConfigs[0].id);
+          modality: config.modality || config.modelCategory || 'NLP',
+          modelCategory: config.modality || config.modelCategory || 'NLP',
+          
+          sub_type: config.sub_type || config.modelType || '',
+          modelType: config.sub_type || config.modelType || '',
+          
+          model_id: config.model_id || config.modelId || config.selectedModel || '',
+          modelId: config.model_id || config.modelId || config.selectedModel || '',
+          selectedModel: config.model_id || config.modelId || config.selectedModel || '',
+          
+          source: config.source || 'huggingface',
+          
+          api_key: config.api_key || config.apiKey || '',
+          apiKey: config.api_key || config.apiKey || ''
+        };
+        
+        setModelConfig(config);
+        
+        // Immediately initialize the model adapter
+        try {
+          const adapter = await createModelAdapter(config);
+          setModelAdapter(adapter);
+          
+          // Use the selected tests from navigation state
+          if (location.state?.selectedTests && location.state.selectedTests.length > 0) {
+            setSelectedTests(location.state.selectedTests);
           }
-        } else {
-          // Use the config provided in location state
-          // Normalize config to ensure it has both old and new field names
-          config = {
-            ...config,
-            name: config.name || config.modelName || 'Unnamed Model',
-            modelName: config.name || config.modelName || 'Unnamed Model',
-            
-            modality: config.modality || config.modelCategory || 'NLP',
-            modelCategory: config.modality || config.modelCategory || 'NLP',
-            
-            sub_type: config.sub_type || config.modelType || '',
-            modelType: config.sub_type || config.modelType || '',
-            
-            model_id: config.model_id || config.modelId || config.selectedModel || '',
-            modelId: config.model_id || config.modelId || config.selectedModel || '',
-            selectedModel: config.model_id || config.modelId || config.selectedModel || '',
-            
-            source: config.source || 'huggingface',
-            
-            api_key: config.api_key || config.apiKey || '',
-            apiKey: config.api_key || config.apiKey || ''
-          };
           
-          setModelConfig(config);
-          
-          if (config.modelAdapter) {
-            setModelAdapter(config.modelAdapter);
-          }
+        } catch (adapterError) {
+          setError(`Failed to initialize model adapter: ${adapterError.message}`);
+          setErrorSeverity('error');
         }
       } catch (err) {
-        setError('Failed to load model configurations');
+        setError('Failed to load model configuration');
       } finally {
         setLoading(false);
       }
@@ -366,10 +375,6 @@ const RunTestsPage = () => {
     setLogs([]);
     addLog('Starting test run...');
     
-    // Reset WebSocket service completely to ensure clean state
-    websocketService.reset();
-    addLog('WebSocket service reset to ensure clean state');
-    
     try {
       setRunningTests(true);
       setError(null);
@@ -387,10 +392,6 @@ const RunTestsPage = () => {
         addLog(`Preparing ${groupedTests[category].length} tests for category: ${category}`);
       }
       
-      const logCallback = (message) => {
-        addLog(message);
-      };
-      
       // Create a test configuration object that explicitly includes all required fields for the API
       const testConfig = {
         // Ensure we have all the required fields with the correct names
@@ -399,416 +400,146 @@ const RunTestsPage = () => {
         sub_type: modelConfig?.sub_type || modelConfig?.modelType || '',
         source: modelConfig?.source || 'huggingface',
         model_id: modelConfig?.model_id || modelConfig?.modelId || modelConfig?.selectedModel || modelAdapter?.modelId || '',
-        api_key: modelConfig?.api_key || modelConfig?.apiKey || ''
+        api_key: modelConfig?.api_key || modelConfig?.apiKey || '',
+        test_ids: selectedTests // Add selected test IDs to the config
       };
       
       addLog(`Preparing test configuration with model ID: ${testConfig.model_id}`);
       
       try {
-        // Create a reusable handler function that processes any message type
-        const processMessage = (data) => {
-          // If data doesn't have a type but is a string, try to parse it
-          if (!data.type && typeof data === 'string') {
-            try {
-              data = JSON.parse(data);
-            } catch (e) {
-              // Silent error
+        // First, create an eval definition to get an eval_id
+        const evalDefinition = {
+          eval_id: `test_run_${Date.now()}`,
+          name: testConfig.name,
+          modality: testConfig.modality,
+          sub_type: testConfig.sub_type,
+          source: testConfig.source,
+          model_id: testConfig.model_id,
+          api_key: testConfig.api_key,
+          test_ids: selectedTests,
+          // Add required fields
+          dataset_id: location.state?.testParameters?.datasets?.[0] || 'MuSR', // Get dataset from location state or use default
+          scorer: location.state?.testParameters?.scorer || 'ExactStringMatchScorer' // Use the scorer from the wizard or default to a valid one
+        };
+        
+        // Create or update the eval definition
+        addLog(`Creating eval with dataset_id: ${evalDefinition.dataset_id} and scorer: ${evalDefinition.scorer}`);
+        console.log('Creating eval definition:', evalDefinition);
+        
+        const createEvalResponse = await fetchWithAuth(`${API_BASE_URL}/api/evals/create_or_update_eval`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(evalDefinition),
+        });
+        
+        if (!createEvalResponse.ok) {
+          const errorText = await createEvalResponse.text();
+          console.error('Error creating eval definition:', errorText);
+          throw new Error(`Failed to create evaluation configuration: ${errorText}`);
+        }
+        
+        addLog(`Created evaluation with ID: ${evalDefinition.eval_id}`);
+        
+        // Now run the eval with the eval_id - using the approach from EvalResults.jsx
+        const response = await fetchWithAuth(`${API_BASE_URL}/api/evals/run_eval?eval_id=${evalDefinition.eval_id}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          let errorMessage = `API error (${response.status})`;
+          try {
+            const errorJson = JSON.parse(errorText);
+            errorMessage = errorJson.detail || errorJson.message || errorMessage;
+          } catch (e) {
+            // Use the raw error text if JSON parsing fails
+            errorMessage = errorText || errorMessage;
+          }
+          throw new Error(errorMessage);
+        }
+        
+        // Process streaming response - simplified approach like in EvalResults.jsx
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+        
+        addLog('Starting to read streaming test results...');
+        
+        try {
+          while (true) {
+            const {value, done} = await reader.read();
+            if (done) {
+              addLog('Stream complete');
+              break;
+            }
+            
+            const text = decoder.decode(value, {stream: true});
+            buffer += text;
+            
+            // Process complete JSON lines
+            const lines = buffer.split('\n');
+            // Keep the last line which might be incomplete
+            buffer = lines.pop() || '';
+            
+            if (lines.length > 0) {
+              addLog(`Processing ${lines.length} new result lines`);
+            }
+            
+            // Process each complete line
+            for (let line of lines) {
+              if (line.trim()) { // Skip empty lines
+                try {
+                  const parsed = JSON.parse(line);
+                  console.log("Received test result:", parsed);
+                  
+                  // Add to testResults array - this works more like the EvalResults page
+                  if (parsed.input || parsed.output || parsed.score !== undefined) {
+                    setTestResults(prev => [...prev, parsed]);
+                  }
+                  
+                  // Also process with the existing method for compatibility with TestDetailsPanel
+                  processTestUpdate(parsed);
+                } catch (e) {
+                  console.error('Error parsing JSON line:', e, 'Line:', line);
+                  addLog(`Error processing result data: ${e.message}`);
+                }
+              }
             }
           }
           
-          // Get the message type, defaulting to 'unknown' if not present
-          const msgType = data.type || 'unknown';
-          
-          // Helper function to normalize test IDs for consistency
-          const normalizeTestId = (testId) => {
-            if (!testId) return testId;
-            
-            // Find the matching test from selectedTests if possible
-            const originalTestId = selectedTests.find(id => {
-              const idNorm = id.toLowerCase().replace(/[-_\s]+/g, '');
-              const testIdNorm = testId.toLowerCase().replace(/[-_\s]+/g, '');
-              return idNorm.includes(testIdNorm) || testIdNorm.includes(idNorm);
-            });
-            
-            // Return the original test ID from selectedTests if found, otherwise the input test ID
-            return originalTestId || testId;
-          };
-          
-          // Use switch statement to handle message types
-          switch(msgType) {
-            case 'test_status_update':
-              // Handle test status updates
-              const { progress, current_test, test_stats } = data;
-              
-              // Add debug logs before any conditional checks
-              console.log("===== TEST STATUS UPDATE MESSAGE RECEIVED =====");
-              console.log("Data received:", data);
-              console.log("Current runningTests state:", runningTests);
-              console.log("Current selectedTests:", selectedTests);
-              
-              if (progress) {
-                setTestProgress(progress);
-              }
-              if (current_test) {
-                console.log("TEST STATUS UPDATE - received current_test:", current_test);
-                console.log("TEST STATUS UPDATE - test IDs to compare:", selectedTests);
-                setCurrentTestName(current_test);
-              }
-              if (test_stats) {
-                setTestStats(test_stats);
-              }
-              break;
-              
-            case 'test_progress':
-              // Handle test progress updates
-              console.log("===== TEST PROGRESS MESSAGE RECEIVED =====");
-              console.log("Data received:", data);
-              
-              // Extract the test ID and status, normalizing the test ID
-              const progressTestId = normalizeTestId(data.test_id);
-              const progressStatus = data.status;
-              
-              if (progressTestId && progressStatus === 'running') {
-                // Update current test name to reflect what's running
-                setCurrentTestName(progressTestId);
-                console.log("TEST PROGRESS - set current test to:", progressTestId);
-              }
-              
-              // Update progress if available
-              if (data.current && data.total && data.total > 0) {
-                const calculatedProgress = data.current / data.total;
-                setTestProgress(calculatedProgress);
-                console.log("TEST PROGRESS - updated progress:", calculatedProgress);
-              }
-              break;
-              
-            case 'test_result':
-              // Handle individual test results
-              const resultTestId = normalizeTestId(data.test_id);
-              const { test_name, status, score } = data;
-              addLog(`Test completed: ${test_name} - ${status} (Score: ${score})`);
-              
-              // Validate the test result data
-              if (!resultTestId || !test_name) {
-                return;
-              }
-              
-              // Update the UI with the test result by adding it to the array
-              setTestResults(prevResults => {
-                // Create a copy of previous results array (or initialize as empty array if not an array)
-                const newResults = Array.isArray(prevResults) ? [...prevResults] : [];
-                
-                // Check if this test is already in the results
-                const testIndex = newResults.findIndex(r => r.test_id === resultTestId);
-                
-                // Update or add the test result
-                if (testIndex !== -1) {
-                  // Update existing test result
-                  newResults[testIndex] = {
-                    ...newResults[testIndex],
-                    status,
-                    score,
-                    completed: true,
-                    test_category: data.test_category || newResults[testIndex].test_category || 'unknown'
-                  };
-                } else {
-                  // Add new test result
-                  newResults.push({
-                    test_id: resultTestId,
-                    test_name,
-                    status,
-                    score,
-                    completed: true,
-                    // Add other properties if available in the data
-                    test_category: data.test_category || 'unknown',
-                    issues_found: data.issues_found || 0,
-                    metrics: data.metrics || {},
-                    created_at: new Date().toISOString()
-                  });
-                }
-                
-                // If we're receiving individual test results, also construct a proper results object
-                // and save it to context immediately (don't wait for test_complete)
-                if (newResults.length > 0) {
-                  // Format results for context using the same structure as in processTestResults
-                  const resultsObject = {};
-                  newResults.forEach(result => {
-                    if (result && result.test_id) {
-                      // Format expected by Results page
-                      resultsObject[result.test_id] = {
-                        test: {
-                          id: result.test_id,
-                          name: result.test_name,
-                          category: result.test_category,
-                          description: result.description || `Test for ${result.test_name}`,
-                          severity: result.severity || 'medium'
-                        },
-                        result: {
-                          pass: result.status === 'success' || result.status === 'passed',
-                          score: result.score,
-                          message: result.message || (result.status === 'success' ? 'Test passed successfully' : 'Test failed'),
-                          details: result.analysis || {},
-                          issues_found: result.issues_found || 0,
-                          metrics: result.metrics || {},
-                          timestamp: result.created_at || new Date().toISOString()
-                        }
-                      };
-                    }
-                  });
-                  
-                  // Calculate scores from results
-                  const scoresData = {};
-                  Object.values(resultsObject).forEach(item => {
-                    if (!item || !item.test || !item.test.category) return;
-                    
-                    const category = item.test.category;
-                    if (!scoresData[category]) {
-                      scoresData[category] = { total: 0, passed: 0 };
-                    }
-                    
-                    scoresData[category].total++;
-                    if (item.result && item.result.pass) {
-                      scoresData[category].passed++;
-                    }
-                  });
-                  
-                  // Save the current taskId so we can retrieve it when the test completes
-                  if (taskId) {
-                    // Save to database using the dedicated service
-                    testResultsService.saveResults(taskId, resultsObject, scoresData)
-                      .then(savedRecord => {
-                        // Success - no need to log
-                      })
-                      .catch(error => {
-                        // Error - no need to log
-                      });
-                  }
-                  
-                  // Update state with the formatted results object
-                  setTestResultsDataSource({
-                    taskId: taskId,
-                    results: resultsObject,
-                    scores: scoresData
-                  });
-                  
-                  // Also update context for backward compatibility
-                  if (typeof saveTestResults === 'function') {
-                    saveTestResults(resultsObject, scoresData);
-                  }
-                }
-                
-                return newResults;
-              });
-              break;
-              
-            case 'test_complete':
-              // Mark test as complete first to update UI state
-              setTestComplete(true);
-              
-              // Extract test run ID from the response
-              const taskId = data.task_id || data.id || data.test_run_id;
-              
-              // Initialize results object
-              let resultsForNavigation = {};
-              let scoresForNavigation = {};
-              
-              // Case 1: Results in test_run structure (most common format)
-              if (data.test_run && typeof data.test_run === 'object') {
-                // Case 1.1: test_run contains results with test_results (newest format)
-                if (data.test_run.results && data.test_run.results.test_results) {
-                  resultsForNavigation = data.test_run.results.test_results;
-                } 
-                // Case 1.2: test_run contains test_results directly
-                else if (data.test_run.test_results) {
-                  resultsForNavigation = data.test_run.test_results;
-                }
-                // Case 1.3: test_run contains results directly
-                else if (data.test_run.results) {
-                  resultsForNavigation = data.test_run.results;
-                }
-                
-                // Extract scores if available
-                if (data.test_run.compliance_scores) {
-                  scoresForNavigation = data.test_run.compliance_scores;
-                }
-              }
-              // Case 2: Results in top-level results object
-              else if (data.results) {
-                // Case 2.1: results contains test_results
-                if (data.results.test_results) {
-                  resultsForNavigation = data.results.test_results;
-                } else {
-                  // Case 2.2: results is the results object
-                  resultsForNavigation = data.results;
-                }
-                
-                // Extract scores if available
-                if (data.scores) {
-                  scoresForNavigation = data.scores;
-                }
-              }
-              
-              // Check if we got results
-              if (resultsForNavigation && Object.keys(resultsForNavigation).length > 0) {
-                // Save results to context for global access
-                if (typeof saveTestResults === 'function') {
-                  saveTestResults(resultsForNavigation, scoresForNavigation);
-                }
-                
-                // Also save to database for future retrieval
-                if (typeof testResultsService !== 'undefined' && testResultsService.saveResults) {
-                  testResultsService.saveResults(taskId, resultsForNavigation, scoresForNavigation)
-                    .then(() => {})
-                    .catch(error => {});
-                }
-                
-                // Prepare data for navigation
-                const navigationState = {
-                  taskId,
-                  results: resultsForNavigation,
-                  scores: scoresForNavigation
-                };
-                
-                // Just set runningTests to false, but don't navigate away
-                setRunningTests(false);
-                // Display a success message in the UI
-                setError(`Tests completed successfully!`);
-                setErrorSeverity('success');
-                setCurrentTask(taskId);
-              } else {
-                setError('No test results were found in the response. Please try again.');
-                setErrorSeverity('error');
-                setRunningTests(false);
-              }
-              break;
-              
-            case 'test_failed':
-              // Handle test failure
-              setError(`Test failed: ${data.message || 'Unknown error'}`);
-              setErrorSeverity('error');
-              setRunningTests(false);
-              break;
-              
-            case 'connection_established':
-              // Handle connection established
-              addLog(`WebSocket connection established for test run ID: ${data.test_run_id}`);
-              break;
-              
-            case 'test_started':
-              // Handle test started
-              addLog(`Test started: ${data.test_name} (${data.test_category})`);
-              break;
-              
-            // Add handlers for the test detail messages
-            case 'model_input':
-              // Normalize the test ID for consistency
-              const inputTestId = normalizeTestId(data.test_id);
-              
-              addLog(`Model Input (${inputTestId}): ${data.prompt_type} prompt received`);
-              // Add to test details
-              setTestDetails(prev => [...prev, {
-                type: 'input',
-                testId: inputTestId,
-                content: data.prompt,
-                promptType: data.prompt_type,
-                timestamp: data.timestamp || new Date().toISOString(),
-                caseId: data.case_id || null  // Store case_id if available
-              }]);
-              break;
-              
-            case 'model_output':
-              // Normalize the test ID for consistency
-              const outputTestId = normalizeTestId(data.test_id);
-              
-              addLog(`Model Output (${outputTestId}): response received`);
-              // Add to test details
-              setTestDetails(prev => [...prev, {
-                type: 'output',
-                testId: outputTestId,
-                content: data.output,
-                timestamp: data.timestamp || new Date().toISOString(),
-                caseId: data.case_id || null  // Store case_id if available
-              }]);
-              break;
-              
-            case 'evaluation_result':
-              // Normalize the test ID for consistency
-              const evalTestId = normalizeTestId(data.test_id);
-              
-              // Use bias_score for QA test or strong_reject_score for security tests
-              const scoreDisplay = data.evaluation.bias_score !== undefined 
-                ? data.evaluation.bias_score 
-                : (data.evaluation.strong_reject_score || 'N/A');
-                
-              addLog(`Evaluation (${evalTestId}): score ${scoreDisplay}`);
-              // Add to test details
-              setTestDetails(prev => [...prev, {
-                type: 'evaluation',
-                testId: evalTestId,
-                content: data.evaluation,
-                timestamp: data.timestamp || new Date().toISOString(),
-                caseId: data.case_id || data.evaluation.case_id || null  // Store case_id if available
-              }]);
-              break;
-              
-            default:
-              // Handle unknown message type
-              break;
+          // Process any remaining data in buffer
+          if (buffer.trim()) {
+            try {
+              const final = JSON.parse(buffer);
+              setTestResults(prev => [...prev, final]);
+              processTestUpdate(final);
+            } catch (e) {
+              console.warn('Error parsing final buffer:', e);
+              addLog(`Error processing final data: ${e.message}`);
+            }
           }
-        };
-        
-        // Register message handlers BEFORE connecting to WebSocket
-        // Use persistentOn instead of on to keep handlers across resets/reconnections
-        websocketService.persistentOn('message', processMessage);
-        websocketService.persistentOn('test_status_update', processMessage);
-        websocketService.persistentOn('test_progress', processMessage);
-        websocketService.persistentOn('test_result', processMessage);
-        websocketService.persistentOn('test_complete', processMessage);
-        websocketService.persistentOn('test_failed', processMessage);
-        websocketService.persistentOn('test_started', processMessage);
-        
-        // Add handlers for the test detail messages
-        websocketService.persistentOn('model_input', processMessage);
-        websocketService.persistentOn('model_output', processMessage);
-        websocketService.persistentOn('evaluation_result', processMessage);
-        
-        // STEP 1: First connect to WebSocket without a task ID to get a new test run ID
-        addLog('Connecting to WebSocket to get test run ID...');
-        const wsResponse = await websocketService.connect();
-        
-        // Extract test run ID from WebSocket response
-        if (!wsResponse || !wsResponse.test_run_id) {
-          throw new Error('Failed to get test run ID from WebSocket');
+          
+          setTestComplete(true);
+          setRunningTests(false);
+          
+          // Set success message here within the try block
+          setError('Tests completed successfully!');
+          setErrorSeverity('success');
+          
+        } catch (streamError) {
+          console.error('Stream reading error:', streamError);
+          addLog(`Error while reading stream: ${streamError.message}`);
+          setError(`Error reading test results: ${streamError.message}`);
+          setErrorSeverity('error');
+          setRunningTests(false);
         }
         
-        const testRunId = wsResponse.test_run_id;
-        addLog(`Received test run ID from WebSocket: ${testRunId}`);
-        
-        // STEP 2: Now run the tests using the test run ID from the WebSocket
-        addLog(`Starting tests with test run ID: ${testRunId}...`);
-        const taskId = await runTests(
-          selectedTests,
-          testConfig,
-          { ...testParameters, test_run_id: testRunId },
-          verbose ? logCallback : null
-        );
-        
-        // Validate task ID
-        if (!taskId) {
-          throw new Error('No task ID returned from the API. Test run could not be initiated.');
-        }
-        
-        addLog(`Test run initiated with task ID: ${taskId}`);
-        
-        // Verify the task ID matches the test run ID from WebSocket
-        if (taskId !== testRunId) {
-          addLog(`Warning: Task ID from API (${taskId}) differs from WebSocket test run ID (${testRunId}). Using WebSocket ID for monitoring.`);
-        }
-        
-        // Tests will now be executed and results will be received via WebSocket events
-        addLog('Tests started. Waiting for results via WebSocket...');
       } catch (error) {
-        // Handle errors in test initialization
         setError(`Error running tests: ${error.message}`);
         setErrorSeverity('error');
         addLog(`Error: ${error.message}`);
@@ -820,6 +551,146 @@ const RunTestsPage = () => {
       addLog(`Error: ${error.message}`);
     } finally {
       setRunningTests(false);
+    }
+  };
+  
+  // Helper function to process streaming test updates
+  const processTestUpdate = (data) => {
+    // Log the update
+    addLog(`Received update: ${data.type || 'unknown'}`);
+    console.log("Received test update:", data);
+    
+    // Helper function to normalize test IDs for consistency
+    const normalizeTestId = (testId) => {
+      if (!testId) return testId;
+      
+      // Find the matching test from selectedTests if possible
+      const originalTestId = selectedTests.find(id => {
+        const idNorm = id.toLowerCase().replace(/[-_\s]+/g, '');
+        const testIdNorm = testId.toLowerCase().replace(/[-_\s]+/g, '');
+        return idNorm.includes(testIdNorm) || testIdNorm.includes(idNorm);
+      });
+      
+      // Return the original test ID from selectedTests if found, otherwise the input test ID
+      return originalTestId || testId;
+    };
+    
+    // Check if this is an input/output/score update
+    if (data.input !== undefined || data.output !== undefined || data.score !== undefined) {
+      const testId = normalizeTestId(data.test_id);
+      
+      // Create test detail entries for TestDetailsPanel
+      if (data.input) {
+        setTestDetails(prev => [...prev, {
+          type: 'input',
+          testId: testId || 'unknown',
+          content: data.input,
+          timestamp: data.timestamp || new Date().toISOString()
+        }]);
+      }
+      
+      if (data.output) {
+        setTestDetails(prev => [...prev, {
+          type: 'output',
+          testId: testId || 'unknown',
+          content: data.output,
+          timestamp: data.timestamp || new Date().toISOString()
+        }]);
+      }
+      
+      if (data.score !== undefined) {
+        setTestDetails(prev => [...prev, {
+          type: 'evaluation',
+          testId: testId || 'unknown',
+          content: {score: data.score},
+          timestamp: data.timestamp || new Date().toISOString()
+        }]);
+      }
+      
+      // Log what we received
+      if (data.input) addLog(`Received input for test ${testId || 'unknown'}`);
+      if (data.output) addLog(`Received output for test ${testId || 'unknown'}`);
+      if (data.score !== undefined) addLog(`Received score ${data.score} for test ${testId || 'unknown'}`);
+      
+      return; // Exit early, we've handled the test data
+    }
+    
+    // Handle test status and completion updates
+    if (data.type === 'test_status_update' || data.status_update) {
+      // Update progress
+      if (data.progress) {
+        setTestProgress(data.progress);
+      }
+      // Update current test
+      if (data.current_test) {
+        setCurrentTestName(data.current_test);
+        addLog(`Running test: ${data.current_test}`);
+      }
+    } 
+    else if (data.type === 'test_complete' || data.summary) {
+      // Process final summary results
+      const summary = data.summary || data;
+      
+      // Mark test as complete
+      setTestComplete(true);
+      
+      // Extract test run ID from the response
+      const taskId = summary.task_id || summary.id || Date.now().toString();
+      
+      // Format the results for the results page
+      const resultsObject = {};
+      testResults.forEach(result => {
+        if (result && result.test_id) {
+          resultsObject[result.test_id] = {
+            test: {
+              id: result.test_id,
+              name: result.test_name || result.test_id,
+              category: result.test_category || 'unknown',
+              description: result.description || `Test for ${result.test_name || result.test_id}`,
+              severity: result.severity || 'medium'
+            },
+            result: {
+              pass: result.status === 'success' || result.status === 'passed' || (result.score > 0.5),
+              score: result.score,
+              message: result.message || (result.status === 'success' ? 'Test passed successfully' : 'Test failed'),
+              details: result.analysis || {},
+              issues_found: result.issues_found || 0,
+              metrics: result.metrics || {},
+              timestamp: result.created_at || new Date().toISOString()
+            }
+          };
+        }
+      });
+      
+      // Extract scores if available
+      const scoresData = summary.scores || {};
+      
+      // Save results to context
+      if (typeof saveTestResults === 'function') {
+        saveTestResults(resultsObject, scoresData);
+      }
+      
+      // Store for navigation
+      setTestResultsDataSource({
+        taskId: taskId,
+        results: resultsObject,
+        scores: scoresData
+      });
+      
+      // Also save to database for future retrieval if service is available
+      if (typeof testResultsService !== 'undefined' && testResultsService.saveResults) {
+        testResultsService.saveResults(taskId, resultsObject, scoresData)
+          .then(() => {})
+          .catch(error => {});
+      }
+      
+      // Set current task ID for view results button
+      setCurrentTask(taskId);
+      
+      // Update UI to show completion status
+      setError('Tests completed successfully!');
+      setErrorSeverity('success');
+      addLog(`All tests complete. View results with "View Full Results" button.`);
     }
   };
   
@@ -1009,15 +880,6 @@ const RunTestsPage = () => {
     );
   };
   
-  const handleStartTests = () => {
-    if (!selectedModelId) {
-      setError('Please select a model configuration first');
-      setErrorSeverity('error');
-      return;
-    }
-    navigate('/test-config');
-  };
-  
   /**
    * Process test results and update the UI
    * @param {Object|Array} resultsData - The test results data
@@ -1201,40 +1063,51 @@ const RunTestsPage = () => {
         
         <Paper sx={{ p: 3, mb: 3, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
           <Typography variant="h6" gutterBottom>
-            Select Model Configuration
+            Test Execution
           </Typography>
           
-          {savedConfigs.length === 0 ? (
-            <Alert severity="info" sx={{ mb: 3 }}>
-              No saved model configurations found. Please configure a model first.
+          {loading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : error && !modelConfig ? (
+            <Alert severity="error" sx={{ mb: 3 }}>
+              {error}
               <Button
-                color="primary"
-                onClick={() => navigate('/model-config')}
+                color="inherit"
+                onClick={() => navigate('/run-tests')}
                 sx={{ ml: 2 }}
               >
-                Configure Model
+                Back to Test Wizard
               </Button>
             </Alert>
-          ) : (
+          ) : modelConfig ? (
             <>
-              <FormControl fullWidth sx={{ mb: 3 }}>
-                <InputLabel id="model-select-label">Model Configuration</InputLabel>
-                <Select
-                  labelId="model-select-label"
-                  value={selectedModelId}
-                  onChange={handleModelSelect}
-                  label="Model Configuration"
-                >
-                  <MenuItem value="">
-                    <em>Select a model</em>
-                  </MenuItem>
-                  {savedConfigs.map((config) => (
-                    <MenuItem key={config.id} value={config.id}>
-                      {config.name || config.modelName} ({config.sub_type || config.modelType})
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="subtitle1" gutterBottom>
+                  Model: {modelConfig.name || modelConfig.modelName}
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+                  <Chip 
+                    size="small" 
+                    label={modelConfig.modality || modelConfig.modelCategory || 'NLP'} 
+                    color="primary" 
+                    variant="outlined" 
+                  />
+                  <Chip 
+                    size="small" 
+                    label={modelConfig.sub_type || modelConfig.modelType || 'Text Generation'} 
+                    color="secondary" 
+                    variant="outlined" 
+                  />
+                  <Chip 
+                    size="small" 
+                    label={modelConfig.source || 'Provider'} 
+                    color="default" 
+                    variant="outlined" 
+                  />
+                </Box>
+              </Box>
               
               {error && (
                 <Alert 
@@ -1256,42 +1129,26 @@ const RunTestsPage = () => {
                 </Alert>
               )}
               
-              {selectedModelId && modelConfig && (
-                <Alert severity="success" sx={{ mb: 3 }}>
-                  Selected model: {modelConfig.modelName}
-                </Alert>
-              )}
-              
               {selectedTests.length === 0 && (
                 <Alert severity="warning" sx={{ mb: 3 }}>
-                  No tests selected. Please configure tests first.
+                  No tests selected. Please go back to configure tests.
                   <Button
                     color="primary"
-                    onClick={() => navigate('/test-config')}
+                    onClick={() => navigate('/run-tests')}
                     sx={{ ml: 2 }}
                   >
-                    Configure Tests
+                    Back to Test Wizard
                   </Button>
                 </Alert>
               )}
               
               <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <Button
-                  variant="contained"
-                  color="primary"
-                  onClick={handleStartTests}
-                  disabled={!selectedModelId || loading}
-                  sx={{ mr: 2 }}
-                >
-                  {loading ? <CircularProgress size={24} /> : 'Configure Tests'}
-                </Button>
-                
                 {selectedTests.length > 0 && (
                   <Button
                     variant="contained"
-                    color="secondary"
+                    color="primary"
                     onClick={handleRunTests}
-                    disabled={!selectedModelId || !selectedTests.length || loading || runningTests}
+                    disabled={!modelConfig || !selectedTests.length || loading || runningTests}
                     startIcon={<PlayArrowIcon />}
                   >
                     Run {selectedTests.length} Test{selectedTests.length !== 1 ? 's' : ''}
@@ -1299,82 +1156,24 @@ const RunTestsPage = () => {
                 )}
               </Box>
             </>
+          ) : (
+            <Alert severity="info">
+              Loading model configuration...
+            </Alert>
           )}
         </Paper>
       </Box>
       
       {/* Only show test section if a model is selected */}
-      {selectedModelId ? (
+      {modelConfig ? (
         <>
           {selectedTests.length === 0 ? (
             <Alert severity="warning" sx={{ mb: 3 }}>
               No tests have been selected. Please go back to Test Configuration to select tests.
             </Alert>
           ) : (
-            <Paper sx={{ p: 3, mb: 3, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
-              <Box sx={{ mb: 3 }}>
-                <Typography variant="h6" gutterBottom>
-                  Test Summary ({selectedTests.length} Tests Selected)
-                </Typography>
-                
-                <Grid container spacing={2}>
-                  {Object.entries(groupTestsByCategory()).map(([category, tests]) => (
-                    <Grid item xs={6} sm={4} md={3} key={category}>
-                      <Paper 
-                        sx={{ 
-                          p: 2, 
-                          bgcolor: 'rgba(0,0,0,0.03)', 
-                          borderRadius: 2,
-                          border: '1px solid',
-                          borderColor: 'divider',
-                          boxShadow: 'none'
-                        }}
-                      >
-                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                          <Box 
-                            sx={{ 
-                              width: 10, 
-                              height: 10, 
-                              borderRadius: '50%', 
-                              bgcolor: CATEGORY_COLORS[category.toLowerCase()] || '#757575',
-                              mr: 1 
-                            }} 
-                          />
-                          <Typography variant="body2">{category}</Typography>
-                        </Box>
-                        <Typography variant="h5" sx={{ mt: 1, fontWeight: 'medium' }}>
-                          {tests.length}
-                        </Typography>
-                      </Paper>
-                    </Grid>
-                  ))}
-                </Grid>
-              </Box>
-              
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                <FormControlLabel
-                  control={
-                    <Switch 
-                      checked={verbose}
-                      onChange={(e) => setVerbose(e.target.checked)}
-                      disabled={runningTests}
-                    />
-                  }
-                  label="Verbose Logging"
-                />
-                
-                <Button
-                  variant="contained"
-                  color="primary"
-                  startIcon={runningTests ? <CircularProgress size={20} color="inherit" /> : <PlayArrowIcon />}
-                  onClick={handleRunTests}
-                  disabled={runningTests}
-                >
-                  {runningTests ? 'Running Tests...' : 'Run Tests'}
-                </Button>
-              </Box>
-              
-              {(runningTests || testComplete) && (
+            (runningTests || testComplete) && (
+              <Paper sx={{ p: 3, mb: 3, boxShadow: 'none', border: '1px solid', borderColor: 'divider' }}>
                 <Box sx={{ mb: 3 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                     <Typography variant="body2">
@@ -1382,13 +1181,42 @@ const RunTestsPage = () => {
                     </Typography>
                   </Box>
                 </Box>
-              )}
-            </Paper>
+                
+                {/* Add summary card */}
+                {testResults.length > 0 && (
+                  <Box sx={{ mb: 3 }}>
+                    <Card variant="outlined">
+                      <CardContent>
+                        <Typography variant="h6" gutterBottom>Test Summary</Typography>
+                        <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                          <Box>
+                            <Typography variant="body2" color="text.secondary">Total Tests</Typography>
+                            <Typography variant="h5">{testResults.length}</Typography>
+                          </Box>
+                          <Box>
+                            <Typography variant="body2" color="text.secondary">Passed</Typography>
+                            <Typography variant="h5" color="success.main">
+                              {testResults.filter(r => r.score > 0.5 || r.status === 'success').length}
+                            </Typography>
+                          </Box>
+                          <Box>
+                            <Typography variant="body2" color="text.secondary">Failed</Typography>
+                            <Typography variant="h5" color="error.main">
+                              {testResults.filter(r => r.score <= 0.5 && r.status !== 'success').length}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  </Box>
+                )}
+              </Paper>
+            )
           )}
         </>
       ) : null}
       
-      {/* Replace the TestDetailsPanel with the split view */}
+      {/* Keep the advanced test details panel */}
       <Grid container spacing={3}>
         <Grid item xs={12} md={4} lg={3}>
           <TestSidebar

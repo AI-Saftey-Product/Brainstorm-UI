@@ -60,6 +60,9 @@ import InfoIcon from '@mui/icons-material/Info';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import { getModelConfigById, getModelTestResults } from '../services/modelStorageService';
+import { fetchWithAuth } from "../pages/Login.jsx";
+
+const API_BASE_URL = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
 
 const ModelOverview = () => {
   const { modelId } = useParams();
@@ -82,12 +85,45 @@ const ModelOverview = () => {
   }, [modelId]);
 
   const loadModelData = () => {
-    const config = getModelConfigById(modelId);
+    // First try to get the model from localStorage
+    let config = getModelConfigById(modelId);
+    
+    // If not found in localStorage, fetch from API
     if (!config) {
-      navigate('/');
-      return;
+      // Fetch from the API
+      fetchWithAuth(`${API_BASE_URL}/api/models/get_models?model_id=${modelId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+      .then(res => {
+        if (!res.ok) throw new Error("Network error");
+        return res.json();
+      })
+      .then(data => {
+        if (data && data.length > 0) {
+          config = data[0];
+          processModelData(config);
+        } else {
+          // If not found in API either, redirect to home
+          navigate('/');
+        }
+      })
+      .catch(error => {
+        console.error("Error fetching model:", error);
+        navigate('/');
+      });
+      
+      return; // Return early as we're handling async
     }
     
+    // Process the model data if found in localStorage
+    processModelData(config);
+  };
+  
+  // Helper function to process model data once we have it
+  const processModelData = (config) => {
     // Normalize config to ensure it has both old and new field names
     const normalizedConfig = {
       ...config,

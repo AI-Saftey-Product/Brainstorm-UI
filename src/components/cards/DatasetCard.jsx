@@ -44,7 +44,7 @@ const DatasetCard = ({
             }}
             onClick={(e) => {
               e.stopPropagation();
-              onEdit(config);
+              onClick(config);
             }}
         >
             <Box

@@ -36,8 +36,11 @@ import {
   Database as DatabaseIcon,
   FileText as FileTextIcon,
 } from 'lucide-react';
-import { getDatasetConfigById, deleteDatasetConfig } from '../services/datasetStorageService';
+import { deleteDatasetConfig } from '../services/datasetStorageService';
 import { getDatasetSample, getDatasetInfo } from '../services/huggingFaceDatasetService';
+import { fetchWithAuth } from "@/pages/Login.jsx";
+
+const API_BASE_URL = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
 
 const DatasetDetail = () => {
   const { datasetId } = useParams();
@@ -66,13 +69,25 @@ const DatasetDetail = () => {
     setError(null);
     
     try {
-      // Get dataset config from local storage
-      const datasetConfig = getDatasetConfigById(datasetId);
+      // Fetch dataset from API instead of local storage
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/datasets/get_datasets?dataset_id=${datasetId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
       
-      if (!datasetConfig) {
+      if (!response.ok) {
+        throw new Error('Failed to fetch dataset');
+      }
+      
+      const data = await response.json();
+      
+      if (!data || data.length === 0) {
         throw new Error('Dataset not found');
       }
       
+      const datasetConfig = data[0]; // Get the first dataset from the array
       setDataset(datasetConfig);
       
       // If it's a Hugging Face dataset, fetch additional info
@@ -100,23 +115,31 @@ const DatasetDetail = () => {
     setSampleLoading(true);
     
     try {
-      let sampleData = [];
+      // Fetch dataset preview from API
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/datasets/get_dataset_preview?dataset_id=${datasetConfig.dataset_id}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
       
-      if (datasetConfig.source === 'huggingface') {
-        // For Hugging Face datasets, fetch samples from API
-        sampleData = await getDatasetSample(
-          datasetConfig.dataset_id,
-          datasetConfig.split || 'test',
-          sampleSize,
-          datasetConfig.api_key
-        );
-      } else if (datasetConfig.source === 'custom' && datasetConfig.file?.data) {
-        // For custom datasets, use the stored data
-        const startIdx = (page - 1) * sampleSize;
-        sampleData = datasetConfig.file.data.slice(startIdx, startIdx + sampleSize);
+      if (!response.ok) {
+        throw new Error('Failed to fetch dataset preview');
       }
       
-      setSamples(sampleData);
+      const previewData = await response.json();
+      
+      if (Array.isArray(previewData)) {
+        setSamples(previewData);
+      } else {
+        // If the response is not an array, try to extract data from it
+        if (previewData.data && Array.isArray(previewData.data)) {
+          setSamples(previewData.data);
+        } else {
+          setSamples([]);
+        }
+      }
+      
       setSamplePage(page);
     } catch (err) {
       // If we can't load samples, don't set an error - just show empty samples
@@ -133,7 +156,19 @@ const DatasetDetail = () => {
     }
     
     try {
-      await deleteDatasetConfig(datasetId);
+      // Use API to delete dataset
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/datasets/delete_datasets`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify([datasetId])
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to delete dataset');
+      }
+      
       navigate('/datasets');
     } catch (err) {
       setError('Failed to delete dataset: ' + err.message);

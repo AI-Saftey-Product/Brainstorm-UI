@@ -96,12 +96,18 @@ const ModelConfigForm = ({
                              onChange,
                              errors = {}
                          }) => {
-    const [formValues, setFormValues] = useState(
-        initialValues
-    );
+    const [formValues, setFormValues] = useState({
+        ...initialValues,
+        modality: "NLP",
+        sub_type: "TEXT_GENERATION"
+    });
 
     useEffect(() => {
-        setFormValues(initialValues);
+        setFormValues({
+            ...initialValues,
+            modality: "NLP",
+            sub_type: "TEXT_GENERATION"
+        });
     }, [initialValues]);
 
     const handleChange = (field) => (event) => {
@@ -139,15 +145,6 @@ const ModelConfigForm = ({
 
         return recommendations[modelType] || " Popular options: gpt2, bert-base-uncased, facebook/bart-large-cnn";
     };
-
-    // Show API key field for HuggingFace, OpenAI, and Llama models
-    const showApiKey = formValues.source === 'huggingface' || formValues.source === 'openai' || formValues.source === 'llama';
-
-    // Show OpenAI specific fields only for OpenAI models
-    const showOpenAIFields = formValues.source === 'openai';
-
-    // Show Llama specific fields only for Llama models
-    const showLlamaFields = formValues.source === 'llama';
 
     return (
         <Box>
@@ -189,8 +186,9 @@ const ModelConfigForm = ({
                     <FormControl fullWidth>
                         <InputLabel>Modality</InputLabel>
                         <Select
-                            value={formValues.modality}
+                            value="NLP"
                             label="Modality"
+                            disabled
                         >
                             <MenuItem value="NLP">NLP</MenuItem>
                         </Select>
@@ -202,19 +200,13 @@ const ModelConfigForm = ({
                     <FormControl fullWidth error={!!errors.sub_type}>
                         <InputLabel>Model Type</InputLabel>
                         <Select
-                            value={formValues.sub_type}
+                            value="TEXT_GENERATION"
                             label="Model Type"
-                            onChange={handleChange('sub_type')}
+                            disabled
                         >
-                            {MODEL_CATEGORIES["NLP"].map((type) => (
-                                <MenuItem key={type} value={type}>
-                                    {type}
-                                </MenuItem>
-                            ))}
+                            <MenuItem value="TEXT_GENERATION">TEXT_GENERATION</MenuItem>
                         </Select>
-                        {errors.sub_type && (
-                            <FormHelperText>{errors.sub_type}</FormHelperText>
-                        )}
+                        <FormHelperText>Text generation models only</FormHelperText>
                     </FormControl>
                 </Grid>
 
@@ -258,134 +250,6 @@ const ModelConfigForm = ({
                         )}
                     </FormControl>
                 </Grid>
-
-
-                <Grid item xs={12} md={6}>
-                    <TextField
-                        fullWidth
-                        label="API Key"
-                        value={formValues.api_key}
-                        onChange={handleChange('api_key')}
-                        error={!!errors.api_key}
-                        helperText={errors.api_key || `Your ${formValues.source === 'openai' ? 'OpenAI' : formValues.source === 'llama' ? 'Llama' : 'HuggingFace'} API key`}
-                        type="password"
-                    />
-                </Grid>
-
-                <Grid item xs={12}>
-                    <TextField
-                        fullWidth
-                        label="Endpoint URL"
-                        value={formValues.endpoint_url}
-                        onChange={handleChange('endpoint_url')}
-                        error={!!errors.endpoint_url}
-                        helperText={errors.endpoint_url}
-                    />
-                </Grid>
-
-
-                {/* OpenAI specific parameters */}
-                {/*{showOpenAIFields && (*/}
-                {/*  <>*/}
-                {/*    <Grid item xs={12} md={6}>*/}
-                {/*      <TextField*/}
-                {/*        fullWidth*/}
-                {/*        label="Temperature"*/}
-                {/*        type="number"*/}
-                {/*        inputProps={{ min: 0, max: 2, step: 0.1 }}*/}
-                {/*        value={formValues.temperature}*/}
-                {/*        onChange={handleChange('temperature')}*/}
-                {/*        helperText="Controls randomness (0.1-2.0)"*/}
-                {/*      />*/}
-                {/*    </Grid>*/}
-                {/*    <Grid item xs={12} md={6}>*/}
-                {/*      <TextField*/}
-                {/*        fullWidth*/}
-                {/*        label="Max Tokens"*/}
-                {/*        type="number"*/}
-                {/*        inputProps={{ min: 1, max: 4096, step: 1 }}*/}
-                {/*        value={formValues.max_tokens}*/}
-                {/*        onChange={handleChange('max_tokens')}*/}
-                {/*        helperText="Maximum tokens to generate"*/}
-                {/*      />*/}
-                {/*    </Grid>*/}
-                {/*    <Grid item xs={12} md={6}>*/}
-                {/*      <TextField*/}
-                {/*        fullWidth*/}
-                {/*        label="Frequency Penalty"*/}
-                {/*        type="number"*/}
-                {/*        inputProps={{ min: -2, max: 2, step: 0.1 }}*/}
-                {/*        value={formValues.frequency_penalty}*/}
-                {/*        onChange={handleChange('frequency_penalty')}*/}
-                {/*        helperText="Prevents repetition (-2.0 to 2.0)"*/}
-                {/*      />*/}
-                {/*    </Grid>*/}
-                {/*    <Grid item xs={12} md={6}>*/}
-                {/*      <TextField*/}
-                {/*        fullWidth*/}
-                {/*        label="Presence Penalty"*/}
-                {/*        type="number"*/}
-                {/*        inputProps={{ min: -2, max: 2, step: 0.1 }}*/}
-                {/*        value={formValues.presence_penalty}*/}
-                {/*        onChange={handleChange('presence_penalty')}*/}
-                {/*        helperText="Controls topic diversity (-2.0 to 2.0)"*/}
-                {/*      />*/}
-                {/*    </Grid>*/}
-                {/*    <Grid item xs={12}>*/}
-                {/*      <TextField*/}
-                {/*        fullWidth*/}
-                {/*        label="Organization ID (Optional)"*/}
-                {/*        value={formValues.organization_id || ''}*/}
-                {/*        onChange={handleChange('organization_id')}*/}
-                {/*        helperText="Your OpenAI organization ID (if applicable)"*/}
-                {/*      />*/}
-                {/*    </Grid>*/}
-                {/*  </>*/}
-                {/*)}*/}
-
-                {/* Llama specific parameters */}
-                {/*{showLlamaFields && (*/}
-                {/*  <>*/}
-                {/*    <Grid item xs={12} md={6}>*/}
-                {/*      <TextField*/}
-                {/*        fullWidth*/}
-                {/*        label="Temperature"*/}
-                {/*        type="number"*/}
-                {/*        inputProps={{ min: 0, max: 1, step: 0.1 }}*/}
-                {/*        value={formValues.temperature}*/}
-                {/*        onChange={handleChange('temperature')}*/}
-                {/*        helperText="Controls randomness (0.0-1.0)"*/}
-                {/*      />*/}
-                {/*    </Grid>*/}
-                {/*    <Grid item xs={12} md={6}>*/}
-                {/*      <TextField*/}
-                {/*        fullWidth*/}
-                {/*        label="Max Tokens"*/}
-                {/*        type="number"*/}
-                {/*        inputProps={{ min: 1, max: 4096, step: 1 }}*/}
-                {/*        value={formValues.max_tokens}*/}
-                {/*        onChange={handleChange('max_tokens')}*/}
-                {/*        helperText="Maximum tokens to generate"*/}
-                {/*      />*/}
-                {/*    </Grid>*/}
-                {/*  </>*/}
-                {/*)}*/}
-
-                {/*  <Grid item xs={12}>*/}
-                {/*    <FormControlLabel*/}
-                {/*      control={*/}
-                {/*        <Switch*/}
-                {/*          checked={formValues.verbose}*/}
-                {/*          onChange={(e) => handleChange('verbose')({ target: { value: e.target.checked } })}*/}
-                {/*          color="primary"*/}
-                {/*        />*/}
-                {/*      }*/}
-                {/*      label="Enable Verbose Logging"*/}
-                {/*    />*/}
-                {/*    <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mt: 1 }}>*/}
-                {/*      Show detailed logs during model initialization and testing*/}
-                {/*    </Typography>*/}
-                {/*  </Grid>*/}
             </Grid>
         </Box>
     );
