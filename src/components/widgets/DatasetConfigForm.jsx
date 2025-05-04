@@ -29,32 +29,27 @@ const DATASET_ADAPTERS = {
 };
 
 const DatasetConfigForm = ({
-                               initialValues = {},
+                               formValues = {},
                                onChange,
                                errors = {}
                            }) => {
-    const [formValues, setFormValues] = useState(
-        initialValues
-    );
+    // const [formValues, setFormValues] = useState(
+    //     initialValues
+    // );
 
-    useEffect(() => {
-        setFormValues(initialValues);
-    }, [initialValues]);
+    // useEffect(() => {
+    //     setFormValues(initialValues);
+    // }, [initialValues]);
 
     const handleChange = (field) => (event) => {
         let value = event.target.value;
 
         // Update form values
-        setFormValues(prev => {
+        onChange(prev => {
             const newValues = {
                 ...prev,
                 [field]: value
             };
-
-            // Call onChange callback if provided
-            if (onChange) {
-                onChange(newValues);
-            }
 
             return newValues;
         });
@@ -131,7 +126,7 @@ const DatasetConfigForm = ({
                 </Grid>
 
 
-                <Grid item xs={12} md={6}>
+                <Grid item xs={12}>
                     <TextField
                         fullWidth
                         label="Sample Size"
@@ -140,6 +135,20 @@ const DatasetConfigForm = ({
                         error={!!errors.sample_size}
                         helperText={errors.sample_size}
                     />
+                </Grid>
+
+                <Grid item xs={12}>
+                    <TextField
+                        fullWidth
+                        label="Prompt Template"
+                        value={formValues.prompt_template}
+                        onChange={handleChange('prompt_template')}
+                        error={!!errors.prompt_template}
+                        helperText={errors.prompt_template}
+                        multiline
+                        maxRows={10}
+                    />
+                    <FormHelperText>Use formatted string with the real data fields e.g. "Q: {"{"}question{"}"}"</FormHelperText>
                 </Grid>
             </Grid>
         </Box>

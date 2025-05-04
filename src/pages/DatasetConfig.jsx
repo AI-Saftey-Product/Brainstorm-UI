@@ -55,6 +55,8 @@ const DatasetConfigPage = () => {
         modality: 'NLP',
         dataset_adapter: 'MuSR',
         sample_size: "3",
+
+        prompt_template: '',
     });
 
     useEffect(() => {
@@ -165,7 +167,7 @@ const DatasetConfigPage = () => {
 
             <Paper sx={{p: 3, mb: 3, boxShadow: 'none', border: '1px solid', borderColor: 'divider'}}>
                 <DatasetConfigForm
-                    initialValues={formValues}
+                    formValues={formValues}
                     onChange={handleFormChange}
                     errors={validationErrors}
                 />
