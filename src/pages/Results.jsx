@@ -492,12 +492,6 @@ const ResultsPage = () => {
           >
             Run Tests
           </Button>
-          <Button
-            variant="outlined"
-            onClick={debugState}
-          >
-            Debug State
-          </Button>
         </Box>
         
         {showDebugPanel && (

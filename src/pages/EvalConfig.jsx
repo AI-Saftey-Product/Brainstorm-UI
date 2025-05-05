@@ -11,26 +11,27 @@ import {
     Divider,
     Container,
 } from '@mui/material';
-import ModelConfigForm from '../components/widgets/ModelConfigForm';
 import {useAppContext} from '../context/AppContext';
 import {createModelAdapter} from '../services/modelAdapter';
 import {saveModelConfig} from '../services/modelStorageService';
+import DatasetConfigForm from "@/components/widgets/DatasetConfigForm.jsx";
+import EvalConfigForm from "@/components/widgets/EvalConfigForm.jsx";
 import {fetchWithAuth} from "@/pages/Login.jsx";
 
 const API_BASE_URL = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
 
-const ModelConfigPage = () => {
+const EvalConfigPage = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const {configureModel, modelConfigured} = useAppContext();
-
+    const [modelInitStatus, setModelInitStatus] = useState('');
     // Check if we have a config passed in from location state (for editing)
-    const {model_id} = useParams();
+    const {eval_id} = useParams();
 
     const [passedConfig, setSavedConfigs] = useState([]);
     useEffect(() => {
-        if (model_id) {
-            fetchWithAuth(`${API_BASE_URL}/api/models/get_models?model_id=${model_id}`, {
+        if (eval_id) {
+            fetchWithAuth(`${API_BASE_URL}/api/evals/get_evals?eval_id=${eval_id}`, {
                 method: 'GET',
                 headers: {
                     'Content-Type':  'application/json',
@@ -48,40 +49,36 @@ const ModelConfigPage = () => {
 
 
     const [formValues, setFormValues] = useState({
+        eval_id: 'my_eval',
+        dataset_id: 'my_dataset',
         model_id: 'my_model',
-        name: 'My Model',
+
+        name: 'My Eval',
         description: '',
-        modality: 'NLP',
-        sub_type: 'TEXT_GENERATION',
-        provider: '',
-        provider_model: '',
+
+        scorer: 'ExactStringMatchScorer',
+        scorer_agg_functions: 'average',
+        scorer_agg_dimensions: "",
     });
 
     useEffect(() => {
         if (passedConfig.length > 0) {
             console.log(passedConfig);
-            const config = {
-                ...passedConfig[0],
-                modality: 'NLP',
-                sub_type: 'TEXT_GENERATION'
-            };
-            setFormValues(config);
+            setFormValues(
+                passedConfig[0]
+            );
         }
     }, [passedConfig]);
 
+
     const [validationErrors, setValidationErrors] = useState({});
     const [loading, setLoading] = useState(false);
-    const [configSuccess, setConfigSuccess] = useState(false);
     const [configError, setConfigError] = useState('');
     const [snackbarOpen, setSnackbarOpen] = useState(false);
-    const [modelInitStatus, setModelInitStatus] = useState('');
+    const [configSuccess, setConfigSuccess] = useState(false);
 
     const handleFormChange = (values) => {
-        setFormValues({
-            ...values,
-            modality: 'NLP',
-            sub_type: 'TEXT_GENERATION'
-        });
+        setFormValues(values);
 
         // Clear validation errors for changed fields
         const updatedErrors = {...validationErrors};
@@ -98,12 +95,12 @@ const ModelConfigPage = () => {
 
         // Validate required fields
         if (!formValues.name) {
-            errors.name = 'Model name is required';
+            errors.name = 'Dataset name is required';
         }
 
         // Validate model ID
-        if (!formValues.model_id) {
-            errors.model_id = 'Model ID is required';
+        if (!formValues.eval_id) {
+            errors.eval_id = 'Dataset ID is required';
         }
 
         setValidationErrors(errors);
@@ -120,21 +117,24 @@ const ModelConfigPage = () => {
         setModelInitStatus('');
 
         try {
-            setModelInitStatus(`Initializing ${formValues.provider} model...`);
+            setModelInitStatus(`Initializing ${formValues.source} model...`);
 
             // Create the model adapter with proper configuration
-            const modelConfig = {
-                ...formValues,
-                modality: 'NLP',
-                sub_type: 'TEXT_GENERATION',
-                // Add these required fields with default values
-                endpoint_url: '',
-                api_key: ''
-            };
+            const modelConfig = formValues;
 
-            setModelInitStatus(`${formValues.provider} model "${formValues.model_id}" initialized successfully!`);
+            console.log(modelConfig);
 
-            fetchWithAuth(`${API_BASE_URL}/api/models/create_or_update_model`, {
+            if (typeof modelConfig.scorer_agg_functions === 'string') {
+                modelConfig.scorer_agg_functions = modelConfig.scorer_agg_functions.split(',').map(item => item.trim());
+            }
+
+            if (typeof modelConfig.scorer_agg_dimensions === 'string') {
+                modelConfig.scorer_agg_dimensions = modelConfig.scorer_agg_dimensions.split(',').map(item => item.trim());
+            }
+
+            setModelInitStatus(`${formValues.source} model "${formValues.eval_id}" initialized successfully!`);
+            console.log(modelConfig)
+            fetchWithAuth(`${API_BASE_URL}/api/evals/create_or_update_eval`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -149,7 +149,7 @@ const ModelConfigPage = () => {
             setSnackbarOpen(true);
             setLoading(false);
 
-            navigate("/")
+            navigate("/evals")
         } catch (error) {
             setConfigError(`Error initializing model: ${error.message || 'Unknown error'}`);
             setLoading(false);
@@ -172,11 +172,11 @@ const ModelConfigPage = () => {
                 component="h1"
                 sx={{mb: 4}}
             >
-                {model_id ? 'Model Configuration' : 'New Model Configuration'}
+                {eval_id ? 'Eval Configuration' : 'New Eval Configuration'}
             </Typography>
 
             <Paper sx={{p: 3, mb: 3, boxShadow: 'none', border: '1px solid', borderColor: 'divider'}}>
-                <ModelConfigForm
+                <EvalConfigForm
                     initialValues={formValues}
                     onChange={handleFormChange}
                     errors={validationErrors}
@@ -210,4 +210,4 @@ const ModelConfigPage = () => {
     );
 };
 
-export default ModelConfigPage;
+export default EvalConfigPage;

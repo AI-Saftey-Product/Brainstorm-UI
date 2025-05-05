@@ -1,12 +1,31 @@
-import React from 'react';
+import React, {useEffect, useState} from 'react';
 import { Box, IconButton, InputBase, Typography, Breadcrumbs, Link } from '@mui/material';
 import { Search, History, Bell, User, ChevronRight, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { getSavedModelConfigs } from '../../services/modelStorageService';
+import {fetchWithAuth} from "@/pages/Login.jsx";
+const API_BASE_URL = import.meta.env.VITE_TESTS_API_URL || 'http://localhost:8000';
 
 const TopBar = ({ onToggleSidebar, isSidebarOpen }) => {
   const location = useLocation();
   const navigate = useNavigate();
+
+  const [configs, setSavedConfigs] = useState([]);
+      useEffect(() => {
+        fetchWithAuth(`${API_BASE_URL}/api/models/get_models`, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          })
+            .then(res => {
+            if (!res.ok) throw new Error("Network error");
+            return res.json();
+          })
+          .then(data => {
+            setSavedConfigs(data);
+          })
+      }, []); // empty dependency array = run once on mount
+
 
   // Generate breadcrumbs based on current path
   const getBreadcrumbs = () => {
@@ -28,10 +47,11 @@ const TopBar = ({ onToggleSidebar, isSidebarOpen }) => {
       }];
     }
 
+
     if (paths[0] === 'model' && paths[1]) {
-      const configs = getSavedModelConfigs();
-      const modelConfig = configs.find(config => config.id === paths[1]);
-      
+      console.log('Returned configs:', configs);               //
+      const modelConfig = configs.find(config => config.model_id === paths[1]);
+
       return [...breadcrumbs, {
         label: 'Models',
         path: '/'
@@ -61,7 +81,7 @@ const TopBar = ({ onToggleSidebar, isSidebarOpen }) => {
         path: '/datasets'
       }];
     }
-    
+
     if (paths[0] === 'dataset-config') {
       return [...breadcrumbs, {
         label: 'Datasets',
@@ -86,7 +106,7 @@ const TopBar = ({ onToggleSidebar, isSidebarOpen }) => {
     return [
       ...breadcrumbs,
       ...paths.map((path, index) => ({
-        label: path.split('-').map(word => 
+        label: path.split('-').map(word =>
           word.charAt(0).toUpperCase() + word.slice(1)
         ).join(' '),
         path: '/' + paths.slice(0, index + 1).join('/')
@@ -224,7 +244,7 @@ const TopBar = ({ onToggleSidebar, isSidebarOpen }) => {
         <IconButton size="small">
           <Bell size={20} strokeWidth={1.5} />
         </IconButton>
-        <IconButton size="small">
+        <IconButton size="small" onClick={() => {navigate("/login")}}>
           <User size={20} strokeWidth={1.5} />
         </IconButton>
       </Box>

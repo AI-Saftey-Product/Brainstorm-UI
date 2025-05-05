@@ -1,8 +1,8 @@
 import React from 'react';
 import { Box, Typography, List, ListItem, ListItemIcon, ListItemText } from '@mui/material';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Wrench, PieChart, Settings, Database } from 'lucide-react';
-import brainstormLogo from '../../assets/brainstorm_logo.png';
+import { LayoutDashboard, Wrench, PieChart, Settings, Database, PlayCircle } from 'lucide-react';
+import brainstormLogo from '../../assets/brainstorm_safety_logo.jpg';
 
 const Sidebar = ({ open }) => {
   const navigate = useNavigate();
@@ -12,12 +12,12 @@ const Sidebar = ({ open }) => {
 
   const menuItems = [
     {
-      label: 'Pages',
+      label: 'Modules',
       type: 'header'
     },
     {
-      label: 'Model Overview',
-      path: '/model-overview',
+      label: 'Models',
+      path: '/models',
       icon: <LayoutDashboard size={18} />
     },
     {
@@ -26,20 +26,15 @@ const Sidebar = ({ open }) => {
       icon: <Database size={18} />
     },
     {
-      label: 'Model Config',
-      path: '/model-config',
-      icon: <Wrench size={18} />
-    },
-    {
-      label: 'Results Overview',
-      path: '/results',
+      label: 'Evals',
+      path: '/evals',
       icon: <PieChart size={18} />
     },
     {
-      label: 'Test Config',
-      path: '/test-config',
-      icon: <Settings size={18} />
-    }
+      label: 'Run Tests',
+      path: '/run-tests',
+      icon: <PlayCircle size={18} />
+    },
   ];
 
   return (
@@ -93,7 +88,7 @@ const Sidebar = ({ open }) => {
             color: 'text.primary'
           }}
         >
-          BRAINSTORM
+          EVAL
         </Typography>
       </Box>
 

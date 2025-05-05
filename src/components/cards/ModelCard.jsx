@@ -23,7 +23,7 @@ const ModelCard = ({
 }) => {
   return (
     <Card 
-      data-model-id={config.id}
+      data-model-id={config.model_id}
       sx={{ 
         height: '100%',
         display: 'flex',
@@ -42,7 +42,10 @@ const ModelCard = ({
           transform: 'scale(0.98)',
         }
       }}
-      onClick={onClick}
+      onClick={(e) => {
+              e.stopPropagation();
+              onClick(config);
+            }}
     >
       <Box 
         sx={{ 
@@ -95,20 +98,20 @@ const ModelCard = ({
               pr: 8
             }}
           >
-            {config.name || config.modelName}
+            {config.name}
           </Typography>
-          <Typography 
-            variant="caption" 
-            color="text.secondary" 
-            sx={{ 
-              display: 'block',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis'
-            }}
-          >
-            Last modified {formatDistanceToNow(new Date(config.lastModified))} ago
-          </Typography>
+          {/*<Typography */}
+          {/*  variant="caption" */}
+          {/*  color="text.secondary" */}
+          {/*  sx={{ */}
+          {/*    display: 'block',*/}
+          {/*    whiteSpace: 'nowrap',*/}
+          {/*    overflow: 'hidden',*/}
+          {/*    textOverflow: 'ellipsis'*/}
+          {/*  }}*/}
+          {/*>*/}
+          {/*  Last modified {formatDistanceToNow(new Date(config.lastModified))} ago*/}
+          {/*</Typography>*/}
         </Box>
         <Divider sx={{ my: 1.5 }} />
         <Box sx={{ mb: 2 }}>
@@ -129,20 +132,20 @@ const ModelCard = ({
             }}
           >
             <Chip
-              label={config.sub_type || config.modelType}
+              label={config.sub_type}
               size="small"
               variant="outlined"
             />
             <Chip
-              label={config.modality || config.modelCategory || 'NLP'}
+              label={config.modality}
               size="small"
               variant="outlined"
             />
-            <Chip
-              label={`${config.testResults?.length || 0} tests`}
-              size="small"
-              color={config.testResults?.length > 0 ? "primary" : "default"}
-            />
+            {/*<Chip*/}
+            {/*  label={`${config.testResults?.length || 0} tests`}*/}
+            {/*  size="small"*/}
+            {/*  color={config.testResults?.length > 0 ? "primary" : "default"}*/}
+            {/*/>*/}
           </Box>
           <Typography 
             variant="body2" 
@@ -154,7 +157,7 @@ const ModelCard = ({
               mb: 0.5
             }}
           >
-            Source: {config.source || 'huggingface'}
+            Source: {config.provider}
           </Typography>
           <Typography 
             variant="body2" 
@@ -165,7 +168,7 @@ const ModelCard = ({
               textOverflow: 'ellipsis'
             }}
           >
-            Model ID: {config.model_id || config.modelId || config.selectedModel}
+            Model ID: {config.model_id}
           </Typography>
         </Box>
       </CardContent>
@@ -175,7 +178,7 @@ const ModelCard = ({
 
 ModelCard.propTypes = {
   config: PropTypes.shape({
-    id: PropTypes.string.isRequired,
+    model_id: PropTypes.string.isRequired,
     name: PropTypes.string,
     modelName: PropTypes.string,
     sub_type: PropTypes.string,
@@ -183,11 +186,9 @@ ModelCard.propTypes = {
     modality: PropTypes.string,
     modelCategory: PropTypes.string,
     source: PropTypes.string,
-    model_id: PropTypes.string,
     modelId: PropTypes.string,
     selectedModel: PropTypes.string,
     testResults: PropTypes.array,
-    lastModified: PropTypes.string.isRequired,
   }).isRequired,
   viewMode: PropTypes.oneOf(['grid', 'list']),
   onEdit: PropTypes.func.isRequired,
