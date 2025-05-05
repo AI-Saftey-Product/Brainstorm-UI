@@ -153,14 +153,32 @@ const RunTestsWizard = () => {
       if (!response.ok) throw new Error("Failed to fetch suggested scorers");
       const data = await response.json();
       
-      setSuggestedScorers(data);
+      // Initialize safe default values in case the API returns unexpected data
+      let scorersData = {
+        suggested_scorers: [],
+        suggested_agg_dimensions: []
+      };
+      
+      // Safely extract data from the API response
+      if (data) {
+        if (Array.isArray(data.suggested_scorers)) {
+          scorersData.suggested_scorers = data.suggested_scorers;
+        }
+        
+        if (Array.isArray(data.suggested_agg_dimensions)) {
+          scorersData.suggested_agg_dimensions = data.suggested_agg_dimensions;
+        }
+      }
+      
+      // Save the structured data
+      setSuggestedScorers(scorersData);
       
       // Define available scorers based on what's in the backend SCORERS_MAP
       const availableScorers = ["ExactStringMatchScorer", "LLMQAMatchScorer"];
       
       // Check if suggested scorers are valid and available in the backend
-      if (data.suggested_scorers && data.suggested_scorers.length > 0) {
-        const validScorers = data.suggested_scorers.filter(scorer => 
+      if (scorersData.suggested_scorers && scorersData.suggested_scorers.length > 0) {
+        const validScorers = scorersData.suggested_scorers.filter(scorer => 
           availableScorers.includes(scorer)
         );
         
@@ -178,6 +196,11 @@ const RunTestsWizard = () => {
       console.error('Error fetching scorers:', error);
       // Set a safe default value
       setSelectedScorer("ExactStringMatchScorer");
+      // Also set safe default values for suggested scorers
+      setSuggestedScorers({
+        suggested_scorers: [],
+        suggested_agg_dimensions: []
+      });
     } finally {
       setLoading(false);
     }
@@ -374,12 +397,13 @@ const RunTestsWizard = () => {
     // Define available scorers based on what's in the backend SCORERS_MAP
     const availableScorers = ["ExactStringMatchScorer", "LLMQAMatchScorer"];
     
-    // Filter suggested scorers to only include those actually available in the backend
-    const validSuggestedScorers = suggestedScorers.suggested_scorers && 
-      suggestedScorers.suggested_scorers.filter(scorer => availableScorers.includes(scorer));
+    // Safely handle suggested scorers - ensure it's an array before filtering
+    const validSuggestedScorers = Array.isArray(suggestedScorers?.suggested_scorers) 
+      ? suggestedScorers.suggested_scorers.filter(scorer => availableScorers.includes(scorer))
+      : [];
     
     // If no valid suggested scorers, use all available scorers
-    const displayScorers = (validSuggestedScorers && validSuggestedScorers.length > 0) 
+    const displayScorers = validSuggestedScorers.length > 0
       ? validSuggestedScorers 
       : availableScorers;
     
@@ -408,7 +432,9 @@ const RunTestsWizard = () => {
             {displayScorers.length > 0 ? (
               <>
                 <Typography variant="subtitle2" gutterBottom>
-                  Available Scorers for {selectedDatasets[0]?.name}
+                  Available Scorers for {selectedDatasets.length > 1 
+                    ? `${selectedDatasets.length} datasets` 
+                    : selectedDatasets[0]?.name}
                 </Typography>
                 <Grid container spacing={2}>
                   {displayScorers.map((scorer) => (
@@ -448,7 +474,8 @@ const RunTestsWizard = () => {
                   ))}
                 </Grid>
 
-                {suggestedScorers.suggested_agg_dimensions && (
+                {Array.isArray(suggestedScorers?.suggested_agg_dimensions) && 
+                  suggestedScorers.suggested_agg_dimensions.length > 0 && (
                   <Box sx={{ mt: 3 }}>
                     <Typography variant="subtitle2" gutterBottom>
                       Suggested Dimensions
